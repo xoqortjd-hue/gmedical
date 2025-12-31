@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>카메라 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        #video {
+            width: 100%;
+            max-width: 500px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>📷 카메라 테스트</h1>
+    <p>이 페이지는 브라우저의 카메라 기능을 테스트합니다.</p>
+
+    <button onclick="startCamera()">카메라 시작</button>
+    <button onclick="stopCamera()">카메라 중지</button>
+
+    <div id="status"></div>
+
+    <video id="video" autoplay playsinline></video>
+
+    <div id="info" class="status info">
+        <p><strong>현재 URL:</strong> <span id="currentUrl"></span></p>
+        <p><strong>HTTPS:</strong> <span id="isHttps"></span></p>
+        <p><strong>브라우저:</strong> <span id="browser"></span></p>
+    </div>
+
+    <script>
+        // 정보 표시
+        document.getElementById('currentUrl').textContent = window.location.href;
+        document.getElementById('isHttps').textContent = window.location.protocol === 'https:' ? '✅ Yes' : '❌ No';
+        document.getElementById('browser').textContent = navigator.userAgent;
+
+        let stream = null;
+
+        async function startCamera() {
+            const statusDiv = document.getElementById('status');
+            const video = document.getElementById('video');
+
+            try {
+                statusDiv.innerHTML = '<div class="status info">⏳ 카메라 권한 요청 중...</div>';
+                console.log('Requesting camera access...');
+
+                // 후면 카메라 요청
+                const constraints = {
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+                console.log('Camera access granted!');
+                console.log('Stream:', stream);
+
+                video.srcObject = stream;
+
+                statusDiv.innerHTML = '<div class="status success">✅ 카메라 시작 성공!</div>';
+
+                // 카메라 정보 표시
+                const videoTrack = stream.getVideoTracks()[0];
+                const settings = videoTrack.getSettings();
+                console.log('Camera settings:', settings);
+
+                statusDiv.innerHTML += `
+                    <div class="status info">
+                        <p><strong>카메라:</strong> ${videoTrack.label}</p>
+                        <p><strong>해상도:</strong> ${settings.width} x ${settings.height}</p>
+                        <p><strong>Facing Mode:</strong> ${settings.facingMode || 'unknown'}</p>
+                    </div>
+                `;
+
+            } catch (error) {
+                console.error('Camera error:', error);
+                console.error('Error name:', error.name);
+                console.error('Error message:', error.message);
+
+                let errorMessage = '❌ 카메라 시작 실패<br><br>';
+
+                if (error.name === 'NotAllowedError') {
+                    errorMessage += '<strong>원인:</strong> 카메라 권한이 거부되었습니다.<br>';
+                    errorMessage += '<strong>해결:</strong> 브라우저 설정에서 카메라 권한을 허용해주세요.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage += '<strong>원인:</strong> 카메라를 찾을 수 없습니다.<br>';
+                    errorMessage += '<strong>해결:</strong> 다른 앱이 카메라를 사용 중인지 확인해주세요.';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage += '<strong>원인:</strong> 카메라가 이미 사용 중입니다.<br>';
+                    errorMessage += '<strong>해결:</strong> 다른 앱을 종료하고 다시 시도해주세요.';
+                } else if (error.name === 'NotSupportedError') {
+                    errorMessage += '<strong>원인:</strong> HTTPS가 필요합니다.<br>';
+                    errorMessage += '<strong>해결:</strong> HTTPS URL을 사용해주세요.';
+                } else {
+                    errorMessage += `<strong>에러:</strong> ${error.name}<br>`;
+                    errorMessage += `<strong>메시지:</strong> ${error.message}`;
+                }
+
+                statusDiv.innerHTML = `<div class="status error">${errorMessage}</div>`;
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                document.getElementById('video').srcObject = null;
+                document.getElementById('status').innerHTML = '<div class="status info">카메라 중지됨</div>';
+                console.log('Camera stopped');
+            }
+        }
+    </script>
+</body>
+
+</html>
