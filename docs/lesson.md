@@ -159,3 +159,97 @@
 2. **배치일자 형식**: 날짜를 "12.30" 대신 "2024.12.30 오후 3:00" 상세 표시 옵션
 3. **담당자 필터**: 특정 담당자가 배치한 장비만 필터링하는 기능
 
+---
+
+## 2024-12-31 (화) 개발 세션 - Git/AWS 배포 시행착오
+
+### ✅ 완료된 작업
+
+#### 1. 🐙 GitHub 저장소 생성 및 코드 푸시
+| 항목 | 내용 |
+|------|------|
+| **저장소** | `xoqortjd-hue/gmedical` (Private → Public 변경) |
+| **브랜치** | `clean-main` |
+| **결과** | GitHub에 코드 성공적으로 업로드 |
+
+#### 2. 🚀 AWS EC2 Git 배포 성공
+| 항목 | 내용 |
+|------|------|
+| **방식** | EC2 Instance Connect → git fetch → checkout → npm build |
+| **결과** | PM2 재시작 완료, 서버 online 상태 |
+
+---
+
+### 🔴 개발 중 실수 및 교훈
+
+#### 실수 1: GitHub 대용량 파일 푸시 실패 (100MB 제한)
+| 구분 | 내용 |
+|------|------|
+| **상황** | `git push` 시 대용량 파일로 인해 거부됨 |
+| **원인** | `aws-deploy/database/inventory.db` (126MB), `aws-deploy-new.zip` (115MB) 등이 GitHub 100MB 제한 초과 |
+| **해결** | `.gitignore`에 대용량 파일 추가, `git rm --cached`로 staging에서 제거, `--orphan` 브랜치로 새로운 히스토리 생성 |
+| **교훈** | **프로젝트 초기에 `.gitignore` 설정 철저히!** DB 파일, zip 파일, 대용량 바이너리는 Git에 포함하면 안 됨 |
+
+#### 실수 2: SSH 키 페어 불일치로 SCP/SSH 불가
+| 구분 | 내용 |
+|------|------|
+| **상황** | `medicalkey.pem`으로 SSH 연결 시 "Permission denied (publickey)" 오류 |
+| **원인** | 로컬의 `.pem` 파일이 EC2 인스턴스 생성 시 사용한 키 페어와 **불일치** |
+| **추측** | EC2 인스턴스가 다른 키로 생성되었거나, .pem 파일이 다른 프로젝트 것으로 덮어써짐 |
+| **교훈** | **AWS 키 페어 관리 철저히!** 각 EC2 인스턴스별로 키 파일명을 명확히 하고, AWS 콘솔에서 "키 페어 이름"과 로컬 파일명 일치 확인 필수 |
+
+#### 실수 3: EC2 Instance Connect 복사/붙여넣기 불가
+| 구분 | 내용 |
+|------|------|
+| **상황** | 브라우저 기반 EC2 Instance Connect에서 긴 명령어 복사/붙여넣기 불가 |
+| **원인** | 브라우저 터미널 제약, Ctrl+V 미지원 |
+| **해결 시도** | AWS Systems Manager Run Command 사용 → 실패 (권한 문제) |
+| **최종 해결** | GitHub 저장소를 Public으로 변경하여 인증 없이 git fetch 가능하도록 함 |
+| **교훈** | **Private 저장소 + EC2 Instance Connect = 인증 어려움!** SSH 키를 미리 등록해두거나, 배포용 저장소는 Public 고려 |
+
+#### 실수 4: GitHub Personal Access Token 입력 불가
+| 구분 | 내용 |
+|------|------|
+| **상황** | Private 저장소 git fetch 시 인증 필요 → 토큰 입력 시 글자가 안 보임 (보안 기능) |
+| **원인** | 비밀번호/토큰 입력은 화면에 표시되지 않음 (정상 동작) |
+| **문제** | 90자 이상의 긴 토큰을 보이지 않는 상태로 정확히 타이핑하기 어려움 |
+| **해결** | 저장소를 Public으로 변경하여 인증 생략 |
+| **교훈** | **Git URL에 토큰 포함** (`https://user:token@github.com/...`) 방식은 보안 위험! 대신 SSH 키 인증 또는 Git Credential Helper 사용 권장 |
+
+#### 실수 5: Cloudflared/Serveo 터널링 불안정
+| 구분 | 내용 |
+|------|------|
+| **상황** | Serveo URL 접속 불가 (DNS_PROBE_FINISHED_NXDOMAIN), Cloudflared 500 에러 |
+| **원인** | 터널링 서비스들의 간헐적 불안정성 |
+| **교훈** | **터널링은 임시 개발용!** 프로덕션에서는 Elastic IP + 도메인 또는 AWS Load Balancer 사용 권장 |
+
+---
+
+### 📊 Git vs SCP 배포 비교 (오늘의 교훈)
+
+| 항목 | Git Pull 방식 | SCP 방식 |
+|------|--------------|----------|
+| **장점** | 변경분만 전송, 롤백 쉬움, 히스토리 추적 | 크기 제한 없음, 설정 간단 |
+| **단점** | 100MB 파일 제한, 인증 설정 필요 | 전체 파일 전송, 충돌 관리 어려움 |
+| **권장** | 코드 (JS, CSS, HTML) | 데이터베이스, 대용량 파일 |
+
+---
+
+### 🔧 향후 AWS 배포 체크리스트
+
+- [ ] EC2 인스턴스 생성 시 키 페어 이름 기억하고 .pem 파일 안전하게 보관
+- [ ] `.gitignore`에 DB, zip, 대용량 파일 미리 추가
+- [ ] Elastic IP 할당하여 고정 IP 사용 (재시작해도 IP 변경 없음)
+- [ ] SSH 키를 EC2 authorized_keys에 미리 등록
+- [ ] 프로덕션은 HTTPS 인증서 (Let's Encrypt) + Nginx 리버스 프록시 구성
+
+---
+
+### 📁 수정된 파일 목록
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `.gitignore` | 대용량 파일 (*.db, *.zip, aws-deploy/) 제외 추가 |
+| GitHub 저장소 | `gmedical` 저장소 생성, `clean-main` 브랜치 푸시 |
+| AWS EC2 | git으로 최신 코드 배포, npm build, pm2 restart |
+
