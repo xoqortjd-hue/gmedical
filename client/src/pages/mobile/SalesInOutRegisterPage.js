@@ -112,8 +112,12 @@ function SalesInOutRegisterPage() {
         try {
             console.log('[fetchOutboundItems] Fetching...');
             const res = await axios.get('/api/lending/items');
+            // BIOLOGIC 제외 - 영업팀은 장비/기구만 관리
+            const equipmentOnly = res.data.filter(item =>
+                item.category !== 'BIOLOGIC' && item.category !== 'biologic'
+            );
             // 부산사무실(hospital_name에 "부산사무실" 포함)이 아닌 항목 필터링
-            const outboundItems = res.data.filter(item =>
+            const outboundItems = equipmentOnly.filter(item =>
                 item.hospital_name && !item.hospital_name.includes('부산사무실')
             );
             // 기구명 기준 중복 제거 후 최신순 정렬
@@ -137,8 +141,12 @@ function SalesInOutRegisterPage() {
         try {
             console.log('[fetchInboundItems] Fetching...');
             const res = await axios.get('/api/lending/items');
+            // BIOLOGIC 제외 - 영업팀은 장비/기구만 관리
+            const equipmentOnly = res.data.filter(item =>
+                item.category !== 'BIOLOGIC' && item.category !== 'biologic'
+            );
             // 부산사무실인 항목만 필터링
-            const inboundItems = res.data.filter(item =>
+            const inboundItems = equipmentOnly.filter(item =>
                 item.hospital_name && item.hospital_name.includes('부산사무실')
             );
             const sorted = inboundItems.sort((a, b) =>
@@ -151,6 +159,60 @@ function SalesInOutRegisterPage() {
             setMessage('❌ 데이터 조회 실패');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // 기구명에서 기본명과 번호 분리하여 그룹화
+    const groupByEquipment = (itemList) => {
+        const grouped = {};
+        itemList.forEach(item => {
+            const match = item.product_name?.match(/^(.+?)(#?\d+)$/);
+            let baseName, number;
+            if (match) {
+                baseName = match[1].trim();
+                number = match[2];
+            } else {
+                baseName = item.product_name || '미분류';
+                number = '';
+            }
+            if (!grouped[baseName]) {
+                grouped[baseName] = [];
+            }
+            grouped[baseName].push({
+                ...item,
+                baseName,
+                number
+            });
+        });
+        // 배열로 변환 후 수량 많은 순 정렬
+        return Object.entries(grouped)
+            .map(([baseName, items]) => ({
+                baseName,
+                items: items.sort((a, b) => {
+                    const numA = parseInt(a.number?.replace('#', '') || 0);
+                    const numB = parseInt(b.number?.replace('#', '') || 0);
+                    return numA - numB;
+                }),
+                count: items.length
+            }))
+            .sort((a, b) => b.count - a.count);
+    };
+
+    // 3열로 나누기
+    const chunkArray = (arr, size) => {
+        const chunks = [];
+        for (let i = 0; i < arr.length; i += size) {
+            const chunk = arr.slice(i, i + size);
+            while (chunk.length < size) chunk.push(null);
+            chunks.push(chunk);
+        }
+        return chunks;
+    };
+
+    // 입고 처리 확인 후 실행
+    const confirmAndInbound = (item) => {
+        if (window.confirm(`"${item.product_name}"을(를) 입고 처리하시겠습니까?\n\n현재 위치: ${item.hospital_name}\n→ 부산사무실로 이동`)) {
+            handleInbound(item);
         }
     };
 
@@ -462,7 +524,7 @@ function SalesInOutRegisterPage() {
                 </select>
             </div>
 
-            {/* 입고 처리 */}
+            {/* 입고 처리 - 3열 그리드 */}
             {activeMode === 'inbound' && (
                 <div>
                     <h3 style={{ marginBottom: '1rem', color: '#1e293b' }}>📥 출고 목록 (입고 처리 대상)</h3>
@@ -471,36 +533,83 @@ function SalesInOutRegisterPage() {
                     ) : items.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>출고된 기구가 없습니다</div>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {items.map(item => (
-                                <div key={item.id} style={{
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {groupByEquipment(items).map((group, groupIndex) => (
+                                <div key={groupIndex} style={{
                                     background: 'white',
                                     borderRadius: '12px',
                                     padding: '1rem',
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
-                                    alignItems: 'center'
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
                                 }}>
-                                    <div>
-                                        <div style={{ fontWeight: 'bold', color: '#1e293b' }}>{item.product_name}</div>
-                                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>🏥 {item.hospital_name}</div>
+                                    <div style={{
+                                        fontWeight: 'bold',
+                                        fontSize: '1rem',
+                                        color: '#1e293b',
+                                        marginBottom: '0.75rem',
+                                        paddingBottom: '0.5rem',
+                                        borderBottom: '2px solid #e2e8f0'
+                                    }}>
+                                        {group.baseName} ({group.count}대)
                                     </div>
-                                    <button
-                                        onClick={() => handleInbound(item)}
-                                        disabled={processing}
-                                        style={{
-                                            padding: '0.5rem 1rem',
-                                            background: processing ? '#94a3b8' : '#10b981',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '8px',
-                                            fontWeight: 'bold',
-                                            cursor: processing ? 'not-allowed' : 'pointer'
-                                        }}
-                                    >
-                                        입고처리
-                                    </button>
+                                    {chunkArray(group.items, 3).map((row, rowIndex) => (
+                                        <div key={rowIndex} style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(3, 1fr)',
+                                            gap: '0.5rem',
+                                            marginBottom: rowIndex < chunkArray(group.items, 3).length - 1 ? '0.5rem' : 0
+                                        }}>
+                                            {row.map((item, colIndex) => (
+                                                <div key={colIndex} style={{
+                                                    padding: '0.5rem',
+                                                    borderRadius: '8px',
+                                                    background: item ? '#f8fafc' : 'transparent',
+                                                    border: item ? '1px solid #e2e8f0' : 'none',
+                                                    minHeight: '60px',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}>
+                                                    {item && (
+                                                        <>
+                                                            <div style={{
+                                                                fontSize: '0.8rem',
+                                                                fontWeight: 'bold',
+                                                                color: '#374151',
+                                                                marginBottom: '0.25rem',
+                                                                textAlign: 'center'
+                                                            }}>
+                                                                {item.product_name}
+                                                            </div>
+                                                            <div style={{
+                                                                fontSize: '0.65rem',
+                                                                color: '#64748b',
+                                                                marginBottom: '0.3rem'
+                                                            }}>
+                                                                {item.hospital_name}
+                                                            </div>
+                                                            <button
+                                                                onClick={() => confirmAndInbound(item)}
+                                                                disabled={processing}
+                                                                style={{
+                                                                    padding: '0.2rem 0.6rem',
+                                                                    background: processing ? '#94a3b8' : '#10b981',
+                                                                    color: 'white',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: 'bold',
+                                                                    border: 'none',
+                                                                    cursor: processing ? 'not-allowed' : 'pointer'
+                                                                }}
+                                                            >
+                                                                입고
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
                                 </div>
                             ))}
                         </div>
@@ -508,7 +617,7 @@ function SalesInOutRegisterPage() {
                 </div>
             )}
 
-            {/* 출고 처리 */}
+            {/* 출고 처리 - 3열 그리드 */}
             {activeMode === 'outbound' && !selectedItem && (
                 <div>
                     <h3 style={{ marginBottom: '1rem', color: '#1e293b' }}>📤 입고 목록 (출고 처리 대상)</h3>
@@ -517,30 +626,76 @@ function SalesInOutRegisterPage() {
                     ) : items.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>입고된 기구가 없습니다</div>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {items.map(item => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleSelectForOutbound(item)}
-                                    style={{
-                                        background: 'white',
-                                        borderRadius: '12px',
-                                        padding: '1rem',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'center',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        textAlign: 'left'
-                                    }}
-                                >
-                                    <div>
-                                        <div style={{ fontWeight: 'bold', color: '#1e293b' }}>{item.product_name}</div>
-                                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>부산사무실 (입고)</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {groupByEquipment(items).map((group, groupIndex) => (
+                                <div key={groupIndex} style={{
+                                    background: 'white',
+                                    borderRadius: '12px',
+                                    padding: '1rem',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                                }}>
+                                    <div style={{
+                                        fontWeight: 'bold',
+                                        fontSize: '1rem',
+                                        color: '#1e293b',
+                                        marginBottom: '0.75rem',
+                                        paddingBottom: '0.5rem',
+                                        borderBottom: '2px solid #e2e8f0'
+                                    }}>
+                                        {group.baseName} ({group.count}대)
                                     </div>
-                                    <span style={{ color: '#3b82f6' }}>선택 →</span>
-                                </button>
+                                    {chunkArray(group.items, 3).map((row, rowIndex) => (
+                                        <div key={rowIndex} style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(3, 1fr)',
+                                            gap: '0.5rem',
+                                            marginBottom: rowIndex < chunkArray(group.items, 3).length - 1 ? '0.5rem' : 0
+                                        }}>
+                                            {row.map((item, colIndex) => (
+                                                <div key={colIndex} style={{
+                                                    padding: '0.5rem',
+                                                    borderRadius: '8px',
+                                                    background: item ? '#f8fafc' : 'transparent',
+                                                    border: item ? '1px solid #e2e8f0' : 'none',
+                                                    minHeight: '60px',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}>
+                                                    {item && (
+                                                        <>
+                                                            <div style={{
+                                                                fontSize: '0.8rem',
+                                                                fontWeight: 'bold',
+                                                                color: '#374151',
+                                                                marginBottom: '0.25rem',
+                                                                textAlign: 'center'
+                                                            }}>
+                                                                {item.product_name}
+                                                            </div>
+                                                            <button
+                                                                onClick={() => handleSelectForOutbound(item)}
+                                                                style={{
+                                                                    padding: '0.2rem 0.6rem',
+                                                                    background: '#ef4444',
+                                                                    color: 'white',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: 'bold',
+                                                                    border: 'none',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                출고
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
                             ))}
                         </div>
                     )}

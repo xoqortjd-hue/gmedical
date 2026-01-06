@@ -23,6 +23,12 @@ function SalesStatusDashboard() {
     const [loading, setLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState(null);
 
+    // 상세 팝업 상태
+    const [selectedItem, setSelectedItem] = useState(null);
+    const [movements, setMovements] = useState([]);
+    const [photos, setPhotos] = useState([]);
+    const [detailLoading, setDetailLoading] = useState(false);
+
     // 디버그 로그
     console.log('[SalesStatusDashboard] Rendering');
 
@@ -126,6 +132,42 @@ function SalesStatusDashboard() {
             chunks.push(chunk);
         }
         return chunks;
+    };
+
+    // 상세 정보 조회 (이동 이력 + 사진)
+    const fetchItemDetail = async (item) => {
+        setSelectedItem(item);
+        setDetailLoading(true);
+
+        try {
+            // 이동 이력 조회 (최근 3건)
+            const movementsRes = await axios.get(`/api/lending/movements/${item.id}`);
+            setMovements(movementsRes.data.slice(0, 3)); // 최근 3건만
+
+            // 사진 조회 (전체)
+            const photosRes = await axios.get(`/api/lending/items/${item.id}/photos`);
+            setPhotos(photosRes.data);
+        } catch (error) {
+            console.error('[fetchItemDetail] Error:', error);
+            setMovements([]);
+            setPhotos([]);
+        } finally {
+            setDetailLoading(false);
+        }
+    };
+
+    // 팝업 닫기
+    const closeDetailPopup = () => {
+        setSelectedItem(null);
+        setMovements([]);
+        setPhotos([]);
+    };
+
+    // 날짜 포맷
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '-';
+        const date = new Date(dateStr);
+        return `${date.getMonth() + 1}/${date.getDate()}`;
     };
 
     return (
@@ -261,17 +303,22 @@ function SalesStatusDashboard() {
                                                     }}>
                                                         {item.name}
                                                     </div>
-                                                    <span style={{
-                                                        display: 'inline-block',
-                                                        padding: '0.2rem 0.6rem',
-                                                        background: item.status === 'inbound' ? '#10b981' : '#ef4444',
-                                                        color: 'white',
-                                                        borderRadius: '4px',
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 'bold'
-                                                    }}>
+                                                    <button
+                                                        onClick={() => fetchItemDetail(item)}
+                                                        style={{
+                                                            display: 'inline-block',
+                                                            padding: '0.2rem 0.6rem',
+                                                            background: item.status === 'inbound' ? '#10b981' : '#ef4444',
+                                                            color: 'white',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.7rem',
+                                                            fontWeight: 'bold',
+                                                            border: 'none',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
                                                         {item.status === 'inbound' ? '입고' : '출고'}
-                                                    </span>
+                                                    </button>
                                                 </>
                                             )}
                                         </div>
@@ -280,6 +327,151 @@ function SalesStatusDashboard() {
                             ))}
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* 상세 팝업 모달 */}
+            {selectedItem && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.5)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 1000,
+                    padding: '1rem'
+                }} onClick={closeDetailPopup}>
+                    <div style={{
+                        background: 'white',
+                        borderRadius: '16px',
+                        width: '100%',
+                        maxWidth: '400px',
+                        maxHeight: '80vh',
+                        overflow: 'auto',
+                        padding: '1.5rem'
+                    }} onClick={(e) => e.stopPropagation()}>
+                        {/* 팝업 헤더 */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '1rem',
+                            paddingBottom: '1rem',
+                            borderBottom: '1px solid #e2e8f0'
+                        }}>
+                            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>
+                                {selectedItem.name} {selectedItem.status === 'inbound' ? '입고' : '출고'} 정보
+                            </h2>
+                            <button onClick={closeDetailPopup} style={{
+                                background: 'none', border: 'none', fontSize: '1.5rem',
+                                cursor: 'pointer', color: '#64748b'
+                            }}>×</button>
+                        </div>
+
+                        {detailLoading ? (
+                            <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
+                                로딩 중...
+                            </div>
+                        ) : (
+                            <>
+                                {/* 현재 상태 */}
+                                <div style={{
+                                    background: selectedItem.status === 'inbound' ? '#ecfdf5' : '#fef2f2',
+                                    padding: '1rem',
+                                    borderRadius: '12px',
+                                    marginBottom: '1rem'
+                                }}>
+                                    <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                                        현재 위치
+                                    </div>
+                                    <div style={{
+                                        fontSize: '1rem', fontWeight: 'bold',
+                                        color: selectedItem.status === 'inbound' ? '#059669' : '#dc2626'
+                                    }}>
+                                        📍 {selectedItem.hospital || '부산사무실'}
+                                    </div>
+                                </div>
+
+                                {/* 이동 이력 (최근 3건) */}
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <div style={{
+                                        fontSize: '0.9rem', fontWeight: 'bold', color: '#1e293b',
+                                        marginBottom: '0.75rem'
+                                    }}>
+                                        📜 최근 이동 이력 ({movements.length}건)
+                                    </div>
+                                    {movements.length === 0 ? (
+                                        <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                                            이동 이력이 없습니다
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                            {movements.map((move, idx) => (
+                                                <div key={idx} style={{
+                                                    background: '#f8fafc',
+                                                    padding: '0.75rem',
+                                                    borderRadius: '8px',
+                                                    fontSize: '0.85rem'
+                                                }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span style={{ fontWeight: 'bold' }}>
+                                                            {formatDate(move.movement_date)}
+                                                        </span>
+                                                        <span style={{ color: '#64748b' }}>
+                                                            {move.moved_by || '-'}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ marginTop: '0.3rem', color: '#374151' }}>
+                                                        {move.from_hospital_name || '-'} → {move.to_hospital_name || '-'}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* 사진 (출고 시만 표시) */}
+                                {selectedItem.status === 'outbound' && (
+                                    <div>
+                                        <div style={{
+                                            fontSize: '0.9rem', fontWeight: 'bold', color: '#1e293b',
+                                            marginBottom: '0.75rem'
+                                        }}>
+                                            📷 출고 사진 ({photos.length}장)
+                                        </div>
+                                        {photos.length === 0 ? (
+                                            <div style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                                                사진이 없습니다
+                                            </div>
+                                        ) : (
+                                            <div style={{
+                                                display: 'grid',
+                                                gridTemplateColumns: 'repeat(3, 1fr)',
+                                                gap: '0.5rem'
+                                            }}>
+                                                {photos.map((photo, idx) => (
+                                                    <img
+                                                        key={idx}
+                                                        src={photo.photo_url}
+                                                        alt={`사진 ${idx + 1}`}
+                                                        style={{
+                                                            width: '100%',
+                                                            aspectRatio: '1',
+                                                            objectFit: 'cover',
+                                                            borderRadius: '8px',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                        onClick={() => window.open(photo.photo_url, '_blank')}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             )}
 

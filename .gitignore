@@ -92,3 +92,4 @@ database-backup.sqlite
 cloudflared.exe
 *.db
 *.sqlite
+db.zip
