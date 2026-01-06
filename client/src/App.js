@@ -25,6 +25,10 @@ import MobileCEODashboardPage from './pages/mobile/MobileCEODashboardPage';
 import MobileInboundPage from './pages/mobile/MobileInboundPage';
 import MobileOutboundPage from './pages/mobile/MobileOutboundPage';
 import MobileBiologicInventoryPage from './pages/mobile/MobileBiologicInventoryPage';
+import MobileTeamSelectPage from './pages/mobile/MobileTeamSelectPage';
+import SalesHomePage from './pages/mobile/SalesHomePage';
+import SalesInOutRegisterPage from './pages/mobile/SalesInOutRegisterPage';
+import SalesStatusDashboard from './pages/mobile/SalesStatusDashboard';
 import ChannelQRPage from './pages/ChannelQRPage';
 import GeneralProductRegistrationPage from './pages/GeneralProductRegistrationPage';
 import HospitalProductRegistrationPage from './pages/HospitalProductRegistrationPage';
@@ -35,6 +39,8 @@ import ShakeDetectorProvider from './components/ShakeDetectorProvider';
 function AppContent() {
   const location = useLocation();
   const isMobilePage = location.pathname.startsWith('/mobile');
+  // 영업팀 페이지는 자체 SalesBottomNav를 사용하므로 전역 MobileBottomNav 제외
+  const isSalesPage = location.pathname.startsWith('/mobile/sales');
 
   return (
     <div className="app">
@@ -72,8 +78,16 @@ function AppContent() {
           {/* CEO 대시보드 라우트 */}
           <Route path="/ceo/dashboard" element={<CEODashboardPage />} />
 
-          {/* 모바일 PWA 라우트 */}
-          <Route path="/mobile" element={<MobileLendingPage />} />
+          {/* 모바일 PWA 라우트 - 팀 선택 */}
+          <Route path="/mobile" element={<MobileTeamSelectPage />} />
+
+          {/* 모바일 - 영업팀 라우트 */}
+          <Route path="/mobile/sales" element={<SalesHomePage />} />
+          <Route path="/mobile/sales/register" element={<SalesInOutRegisterPage />} />
+          <Route path="/mobile/sales/status" element={<SalesStatusDashboard />} />
+
+          {/* 모바일 - 관리팀 라우트 (기존 기능) */}
+          <Route path="/mobile/management" element={<MobileLendingPage />} />
           <Route path="/mobile/home" element={<MobileHomePage />} />
           <Route path="/mobile/status" element={<MobileLendingStatusPage />} />
           <Route path="/mobile/equipment" element={<MobileEquipmentStatusPage />} />
@@ -83,8 +97,8 @@ function AppContent() {
           <Route path="/mobile/biologic-inventory" element={<MobileBiologicInventoryPage />} />
         </Routes>
       </main>
-      {/* 모바일 페이지에서 하단 네비게이션 표시 */}
-      {isMobilePage && <MobileBottomNav />}
+      {/* 모바일 페이지에서 하단 네비게이션 표시 (영업팀 제외 - 자체 네비 사용) */}
+      {isMobilePage && !isSalesPage && <MobileBottomNav />}
     </div>
   );
 }

@@ -1,0 +1,14 @@
+{
+    "mcpServers": {
+        "aws-medical-ssh": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-ssh"
+            ],
+            "env": {
+                "SSH_CONFIG": "Host aws-medical\n  HostName 15.165.161.194\n  Port 22\n  User ubuntu\n  IdentityFile C:\\\\Users\\\\user\\\\.gemini\\\\antigravity\\\\scratch\\\\medical-inventory-system\\\\medical-key-2026\n  StrictHostKeyChecking no"
+            }
+        }
+    }
+}

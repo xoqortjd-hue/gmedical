@@ -1,0 +1,745 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import axios from 'axios';
+import CameraScanner from '../../components/CameraScanner';
+import SalesBottomNav from '../../components/SalesBottomNav';
+import { API_BASE_URL } from '../../config';
+import '../../styles/mobile.css';
+
+// axios 기본 URL 설정
+axios.defaults.baseURL = API_BASE_URL;
+axios.defaults.headers.common['ngrok-skip-browser-warning'] = '69420';
+
+/**
+ * SalesInOutRegisterPage - 영업팀 입출고 등록 페이지
+ * 
+ * 드롭다운 옵션: 입고, 출고, 신규등록
+ * - 입고: 출고 상태인 기구 목록 표시 → 입고처리 버튼
+ * - 출고: 입고 상태인 기구 목록 표시 → 출고 폼 (병원, 담당자, 사진)
+ * - 신규등록: 기구명 + 번호 + 사진 등록
+ */
+function SalesInOutRegisterPage() {
+    // URL에서 mode 파라미터 읽기
+    const [searchParams] = useSearchParams();
+    const urlMode = searchParams.get('mode');
+
+    // 현재 모드: 'inbound' | 'outbound' | 'new'
+    const [activeMode, setActiveMode] = useState(urlMode || '');
+
+    // 공통 상태
+    const [items, setItems] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [message, setMessage] = useState('');
+    const [processing, setProcessing] = useState(false);
+
+    // 출고 폼 상태
+    const [selectedItem, setSelectedItem] = useState(null);
+    const [hospitals, setHospitals] = useState([]);
+    const [personnelList, setPersonnelList] = useState([]);
+    const [selectedHospital, setSelectedHospital] = useState('');
+    const [newHospitalName, setNewHospitalName] = useState('');
+    const [selectedPersonnel, setSelectedPersonnel] = useState('');
+    const [newPersonnelName, setNewPersonnelName] = useState('');
+    const [photos, setPhotos] = useState([]); // Base64 배열
+
+    // 신규등록 상태
+    const [newEquipmentName, setNewEquipmentName] = useState('');
+    const [newEquipmentNumber, setNewEquipmentNumber] = useState('');
+    const [newEquipmentPhoto, setNewEquipmentPhoto] = useState(null);
+
+    // 파일 입력 ref
+    const cameraInputRef = useRef(null);
+    const albumInputRef = useRef(null);
+    const newEquipCameraRef = useRef(null);
+    const newEquipAlbumRef = useRef(null);
+
+    // 디버그 로그
+    console.log('[SalesInOutRegisterPage] Render - activeMode:', activeMode);
+
+    useEffect(() => {
+        fetchHospitals();
+        fetchPersonnelList();
+    }, []);
+
+    // URL mode 변경시 activeMode 업데이트
+    useEffect(() => {
+        if (urlMode && ['inbound', 'outbound', 'new'].includes(urlMode)) {
+            setActiveMode(urlMode);
+        }
+    }, [urlMode]);
+
+    useEffect(() => {
+        if (activeMode === 'inbound') {
+            fetchOutboundItems(); // 출고 상태 → 입고 처리 대상
+        } else if (activeMode === 'outbound') {
+            fetchInboundItems(); // 입고 상태 → 출고 처리 대상
+        }
+    }, [activeMode]);
+
+    // 병원 목록 조회
+    const fetchHospitals = async () => {
+        try {
+            console.log('[fetchHospitals] Fetching...');
+            const res = await axios.get('/api/hospitals');
+            setHospitals(res.data);
+            console.log('[fetchHospitals] Success:', res.data.length, 'hospitals');
+        } catch (error) {
+            console.error('[fetchHospitals] Error:', error);
+        }
+    };
+
+    // 담당자 목록 조회 (기존 moved_by 값에서 추출)
+    const fetchPersonnelList = async () => {
+        try {
+            console.log('[fetchPersonnelList] Fetching...');
+            const res = await axios.get('/api/lending/items');
+            const uniquePersonnel = [...new Set(
+                res.data
+                    .map(item => item.moved_by)
+                    .filter(name => name && name.trim())
+            )];
+            setPersonnelList(uniquePersonnel);
+            console.log('[fetchPersonnelList] Success:', uniquePersonnel.length, 'personnel');
+        } catch (error) {
+            console.error('[fetchPersonnelList] Error:', error);
+        }
+    };
+
+    // 출고 상태 기구 조회 (입고 처리 대상)
+    // 부산사무실이 아닌 곳 = 출고 상태
+    const fetchOutboundItems = async () => {
+        setLoading(true);
+        try {
+            console.log('[fetchOutboundItems] Fetching...');
+            const res = await axios.get('/api/lending/items');
+            // 부산사무실(hospital_name에 "부산사무실" 포함)이 아닌 항목 필터링
+            const outboundItems = res.data.filter(item =>
+                item.hospital_name && !item.hospital_name.includes('부산사무실')
+            );
+            // 기구명 기준 중복 제거 후 최신순 정렬
+            const sorted = outboundItems.sort((a, b) =>
+                new Date(b.deploy_date || b.lending_date || 0) - new Date(a.deploy_date || a.lending_date || 0)
+            );
+            setItems(sorted);
+            console.log('[fetchOutboundItems] Success:', sorted.length, 'items');
+        } catch (error) {
+            console.error('[fetchOutboundItems] Error:', error);
+            setMessage('❌ 데이터 조회 실패');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 입고 상태 기구 조회 (출고 처리 대상)
+    // 부산사무실 = 입고 상태
+    const fetchInboundItems = async () => {
+        setLoading(true);
+        try {
+            console.log('[fetchInboundItems] Fetching...');
+            const res = await axios.get('/api/lending/items');
+            // 부산사무실인 항목만 필터링
+            const inboundItems = res.data.filter(item =>
+                item.hospital_name && item.hospital_name.includes('부산사무실')
+            );
+            const sorted = inboundItems.sort((a, b) =>
+                new Date(b.deploy_date || b.lending_date || 0) - new Date(a.deploy_date || a.lending_date || 0)
+            );
+            setItems(sorted);
+            console.log('[fetchInboundItems] Success:', sorted.length, 'items');
+        } catch (error) {
+            console.error('[fetchInboundItems] Error:', error);
+            setMessage('❌ 데이터 조회 실패');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // 입고 처리 (출고 → 부산사무실로 이동)
+    const handleInbound = async (item) => {
+        if (processing) return;
+        setProcessing(true);
+        setMessage('⏳ 입고 처리 중...');
+
+        try {
+            console.log('[handleInbound] Processing item:', item.id);
+
+            // 부산사무실 ID 찾기
+            const busanOffice = hospitals.find(h => h.name.includes('부산사무실'));
+            if (!busanOffice) {
+                setMessage('❌ 부산사무실이 등록되어 있지 않습니다');
+                return;
+            }
+
+            // 사진 아카이브 처리 (기존 사진을 archived_photos로 이동)
+            // TODO: 아카이브 API 구현 필요
+
+            // 이동 API 호출
+            await axios.post('/api/lending/move', {
+                lending_item_id: item.id,
+                to_hospital_id: busanOffice.id,
+                moved_by: '영업팀',
+                notes: `입고 처리 - ${new Date().toLocaleString('ko-KR')}`
+            });
+
+            setMessage(`✅ ${item.product_name} 입고 완료!`);
+            console.log('[handleInbound] Success');
+
+            // 목록 새로고침
+            setTimeout(() => {
+                fetchOutboundItems();
+                setMessage('');
+            }, 1500);
+        } catch (error) {
+            console.error('[handleInbound] Error:', error);
+            setMessage(`❌ 입고 실패: ${error.response?.data?.error || error.message}`);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    // 출고 아이템 선택
+    const handleSelectForOutbound = (item) => {
+        console.log('[handleSelectForOutbound] Selected:', item.product_name);
+        setSelectedItem(item);
+        setSelectedHospital('');
+        setNewHospitalName('');
+        setSelectedPersonnel('');
+        setNewPersonnelName('');
+        setPhotos([]);
+    };
+
+    // 파일을 Base64로 변환
+    const fileToBase64 = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    };
+
+    // 사진 촬영/선택 핸들러
+    const handlePhotoCapture = async (e) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+
+        try {
+            console.log('[handlePhotoCapture] Processing', files.length, 'files');
+            const base64Photos = await Promise.all(files.map(file => fileToBase64(file)));
+            setPhotos(prev => [...prev, ...base64Photos]);
+            setMessage(`📷 ${files.length}장 추가됨 (총 ${photos.length + files.length}장)`);
+        } catch (error) {
+            console.error('[handlePhotoCapture] Error:', error);
+            setMessage('❌ 사진 처리 실패');
+        }
+        e.target.value = '';
+    };
+
+    // 사진 삭제
+    const removePhoto = (index) => {
+        setPhotos(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // 출고 처리
+    const handleOutbound = async () => {
+        if (!selectedItem) {
+            setMessage('❌ 기구를 선택해주세요');
+            return;
+        }
+        if (!selectedHospital && !newHospitalName.trim()) {
+            setMessage('❌ 병원을 선택하거나 입력해주세요');
+            return;
+        }
+        if (photos.length === 0) {
+            setMessage('❌ 사진을 최소 1장 첨부해주세요 (필수)');
+            return;
+        }
+
+        setProcessing(true);
+        setMessage('⏳ 출고 처리 중...');
+
+        try {
+            let hospitalId = selectedHospital;
+
+            // 신규 병원 등록
+            if (newHospitalName.trim() && !selectedHospital) {
+                console.log('[handleOutbound] Registering new hospital:', newHospitalName);
+                try {
+                    const hospitalRes = await axios.post('/api/hospitals', {
+                        name: newHospitalName.trim(),
+                        code: `H${Date.now()}`,
+                        address: '',
+                        contact_person: selectedPersonnel || newPersonnelName || '',
+                        phone: ''
+                    });
+                    hospitalId = hospitalRes.data.hospital_id;
+                    await fetchHospitals();
+                } catch (hospitalError) {
+                    if (hospitalError.response?.status === 409) {
+                        hospitalId = hospitalError.response.data.existing_hospital.id;
+                    } else {
+                        throw hospitalError;
+                    }
+                }
+            }
+
+            // 담당자 결정
+            const movedBy = selectedPersonnel || newPersonnelName || '영업팀';
+
+            // 담당자 목록에 신규 추가
+            if (newPersonnelName.trim() && !personnelList.includes(newPersonnelName.trim())) {
+                setPersonnelList(prev => [...prev, newPersonnelName.trim()]);
+            }
+
+            // 이동 API 호출
+            console.log('[handleOutbound] Moving item:', selectedItem.id, 'to hospital:', hospitalId);
+            await axios.post('/api/lending/move', {
+                lending_item_id: selectedItem.id,
+                to_hospital_id: hospitalId,
+                moved_by: movedBy,
+                notes: `출고 처리 - ${new Date().toLocaleString('ko-KR')}`
+            });
+
+            // 사진 업로드
+            console.log('[handleOutbound] Uploading', photos.length, 'photos');
+            for (let i = 0; i < photos.length; i++) {
+                await axios.put(`/api/lending/items/${selectedItem.id}/photo`, {
+                    photo_url: photos[i],
+                    uploaded_by: movedBy
+                });
+            }
+
+            const hospitalName = newHospitalName.trim() ||
+                hospitals.find(h => h.id.toString() === hospitalId.toString())?.name || '병원';
+
+            setMessage(`✅ ${selectedItem.product_name} → ${hospitalName} 출고 완료!`);
+            console.log('[handleOutbound] Success');
+
+            // 폼 초기화 및 목록 새로고침
+            setTimeout(() => {
+                setSelectedItem(null);
+                setPhotos([]);
+                fetchInboundItems();
+                setMessage('');
+            }, 1500);
+
+        } catch (error) {
+            console.error('[handleOutbound] Error:', error);
+            setMessage(`❌ 출고 실패: ${error.response?.data?.error || error.message}`);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    // 신규 기구 등록
+    const handleNewEquipmentRegister = async () => {
+        if (!newEquipmentName.trim()) {
+            setMessage('❌ 기구명을 입력해주세요');
+            return;
+        }
+        if (!newEquipmentNumber.trim()) {
+            setMessage('❌ 기구 번호를 입력해주세요 (예: #1, #2)');
+            return;
+        }
+        if (!newEquipmentPhoto) {
+            setMessage('❌ 사진을 촬영해주세요 (필수)');
+            return;
+        }
+
+        setProcessing(true);
+        setMessage('⏳ 기구 등록 중...');
+
+        try {
+            const fullName = `${newEquipmentName.trim()}${newEquipmentNumber.trim()}`;
+            console.log('[handleNewEquipmentRegister] Registering:', fullName);
+
+            // 제품 등록 (자동으로 부산사무실에 배치됨)
+            const productRes = await axios.post('/api/products', {
+                name: fullName,
+                barcode: `EQ${Date.now()}`,
+                category: 'EQUIPMENT',
+                description: `영업팀 신규등록 - ${new Date().toLocaleString('ko-KR')}`
+            });
+
+            const lendingItemId = productRes.data.lending_item_id;
+
+            // 사진 업로드
+            if (lendingItemId && newEquipmentPhoto) {
+                console.log('[handleNewEquipmentRegister] Uploading photo');
+                await axios.put(`/api/lending/items/${lendingItemId}/photo`, {
+                    photo_url: newEquipmentPhoto,
+                    uploaded_by: '영업팀'
+                });
+            }
+
+            setMessage(`✅ ${fullName} 등록 완료! (부산사무실 입고)`);
+            console.log('[handleNewEquipmentRegister] Success');
+
+            // 폼 초기화
+            setTimeout(() => {
+                setNewEquipmentName('');
+                setNewEquipmentNumber('');
+                setNewEquipmentPhoto(null);
+                setMessage('');
+            }, 1500);
+
+        } catch (error) {
+            console.error('[handleNewEquipmentRegister] Error:', error);
+            setMessage(`❌ 등록 실패: ${error.response?.data?.error || error.message}`);
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    // 신규 기구 사진 핸들러
+    const handleNewEquipPhoto = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            const base64 = await fileToBase64(file);
+            setNewEquipmentPhoto(base64);
+            setMessage('📷 사진 촬영 완료');
+        } catch (error) {
+            console.error('[handleNewEquipPhoto] Error:', error);
+            setMessage('❌ 사진 처리 실패');
+        }
+        e.target.value = '';
+    };
+
+    return (
+        <div className="mobile-container" style={{ padding: '1rem', minHeight: '100vh', background: '#f8fafc', paddingBottom: '5rem' }}>
+            {/* 헤더 */}
+            <div style={{
+                background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+                color: 'white',
+                padding: '1.5rem',
+                borderRadius: '16px',
+                marginBottom: '1rem',
+                textAlign: 'center'
+            }}>
+                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📝</div>
+                <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold', margin: 0 }}>입출고 등록</h1>
+            </div>
+
+            {/* 메시지 표시 */}
+            {message && (
+                <div style={{
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    marginBottom: '1rem',
+                    background: message.includes('✅') ? '#d1fae5' : message.includes('⏳') ? '#fef3c7' : '#fee2e2',
+                    color: message.includes('✅') ? '#065f46' : message.includes('⏳') ? '#92400e' : '#991b1b',
+                    textAlign: 'center'
+                }}>
+                    {message}
+                </div>
+            )}
+
+            {/* 모드 선택 드롭다운 */}
+            <div style={{ marginBottom: '1rem' }}>
+                <select
+                    value={activeMode}
+                    onChange={(e) => {
+                        setActiveMode(e.target.value);
+                        setSelectedItem(null);
+                        setPhotos([]);
+                        setMessage('');
+                    }}
+                    style={{
+                        width: '100%',
+                        padding: '1rem',
+                        fontSize: '1rem',
+                        borderRadius: '12px',
+                        border: '2px solid #e2e8f0',
+                        background: 'white'
+                    }}
+                >
+                    <option value="">-- 작업 선택 --</option>
+                    <option value="inbound">📥 입고 처리</option>
+                    <option value="outbound">📤 출고 처리</option>
+                    <option value="new">➕ 신규 기구 등록</option>
+                </select>
+            </div>
+
+            {/* 입고 처리 */}
+            {activeMode === 'inbound' && (
+                <div>
+                    <h3 style={{ marginBottom: '1rem', color: '#1e293b' }}>📥 출고 목록 (입고 처리 대상)</h3>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>로딩 중...</div>
+                    ) : items.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>출고된 기구가 없습니다</div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {items.map(item => (
+                                <div key={item.id} style={{
+                                    background: 'white',
+                                    borderRadius: '12px',
+                                    padding: '1rem',
+                                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                }}>
+                                    <div>
+                                        <div style={{ fontWeight: 'bold', color: '#1e293b' }}>{item.product_name}</div>
+                                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>🏥 {item.hospital_name}</div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleInbound(item)}
+                                        disabled={processing}
+                                        style={{
+                                            padding: '0.5rem 1rem',
+                                            background: processing ? '#94a3b8' : '#10b981',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            fontWeight: 'bold',
+                                            cursor: processing ? 'not-allowed' : 'pointer'
+                                        }}
+                                    >
+                                        입고처리
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* 출고 처리 */}
+            {activeMode === 'outbound' && !selectedItem && (
+                <div>
+                    <h3 style={{ marginBottom: '1rem', color: '#1e293b' }}>📤 입고 목록 (출고 처리 대상)</h3>
+                    {loading ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>로딩 중...</div>
+                    ) : items.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>입고된 기구가 없습니다</div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {items.map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => handleSelectForOutbound(item)}
+                                    style={{
+                                        background: 'white',
+                                        borderRadius: '12px',
+                                        padding: '1rem',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        textAlign: 'left'
+                                    }}
+                                >
+                                    <div>
+                                        <div style={{ fontWeight: 'bold', color: '#1e293b' }}>{item.product_name}</div>
+                                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>부산사무실 (입고)</div>
+                                    </div>
+                                    <span style={{ color: '#3b82f6' }}>선택 →</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* 출고 폼 */}
+            {activeMode === 'outbound' && selectedItem && (
+                <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                        <h3 style={{ margin: 0, color: '#1e293b' }}>📤 출고 정보 입력</h3>
+                        <button onClick={() => setSelectedItem(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+                    </div>
+
+                    <div style={{ padding: '1rem', background: '#f1f5f9', borderRadius: '8px', marginBottom: '1rem' }}>
+                        <strong style={{ color: '#1e293b' }}>{selectedItem.product_name}</strong>
+                    </div>
+
+                    {/* 병원 선택 */}
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#374151' }}>🏥 병원 선택</label>
+                        <select
+                            value={selectedHospital}
+                            onChange={(e) => { setSelectedHospital(e.target.value); setNewHospitalName(''); }}
+                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '0.5rem' }}
+                        >
+                            <option value="">기존 병원 선택...</option>
+                            {hospitals.filter(h => !h.name.includes('부산사무실')).map(h => (
+                                <option key={h.id} value={h.id}>{h.name}</option>
+                            ))}
+                        </select>
+                        <input
+                            type="text"
+                            value={newHospitalName}
+                            onChange={(e) => { setNewHospitalName(e.target.value); setSelectedHospital(''); }}
+                            placeholder="또는 신규 병원 입력"
+                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxSizing: 'border-box' }}
+                        />
+                    </div>
+
+                    {/* 담당자 선택 */}
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#374151' }}>👤 담당자</label>
+                        <select
+                            value={selectedPersonnel}
+                            onChange={(e) => { setSelectedPersonnel(e.target.value); setNewPersonnelName(''); }}
+                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '0.5rem' }}
+                        >
+                            <option value="">기존 담당자 선택...</option>
+                            {personnelList.map((name, idx) => (
+                                <option key={idx} value={name}>{name}</option>
+                            ))}
+                        </select>
+                        <input
+                            type="text"
+                            value={newPersonnelName}
+                            onChange={(e) => { setNewPersonnelName(e.target.value); setSelectedPersonnel(''); }}
+                            placeholder="또는 신규 담당자 입력"
+                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxSizing: 'border-box' }}
+                        />
+                    </div>
+
+                    {/* 사진 첨부 (필수) */}
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#374151' }}>
+                            📷 사진 첨부 <span style={{ color: '#ef4444' }}>(필수)</span>
+                        </label>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                            <button
+                                onClick={() => cameraInputRef.current?.click()}
+                                style={{ flex: 1, padding: '0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                            >
+                                📷 촬영
+                            </button>
+                            <button
+                                onClick={() => albumInputRef.current?.click()}
+                                style={{ flex: 1, padding: '0.75rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                            >
+                                🖼️ 앨범
+                            </button>
+                        </div>
+                        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} style={{ display: 'none' }} multiple />
+                        <input ref={albumInputRef} type="file" accept="image/*" onChange={handlePhotoCapture} style={{ display: 'none' }} multiple />
+
+                        {photos.length > 0 && (
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                {photos.map((photo, idx) => (
+                                    <div key={idx} style={{ position: 'relative' }}>
+                                        <img src={photo} alt={`photo-${idx}`} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} />
+                                        <button
+                                            onClick={() => removePhoto(idx)}
+                                            style={{ position: 'absolute', top: '-5px', right: '-5px', width: '20px', height: '20px', borderRadius: '50%', background: '#ef4444', color: 'white', border: 'none', fontSize: '0.7rem', cursor: 'pointer' }}
+                                        >✕</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 출고 버튼 */}
+                    <button
+                        onClick={handleOutbound}
+                        disabled={processing}
+                        style={{
+                            width: '100%',
+                            padding: '1rem',
+                            background: processing ? '#94a3b8' : 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '12px',
+                            fontSize: '1rem',
+                            fontWeight: 'bold',
+                            cursor: processing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        {processing ? '처리 중...' : '📤 출고 등록'}
+                    </button>
+                </div>
+            )}
+
+            {/* 신규 기구 등록 */}
+            {activeMode === 'new' && (
+                <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
+                    <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>➕ 신규 기구 등록</h3>
+
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#374151' }}>기구명</label>
+                        <input
+                            type="text"
+                            value={newEquipmentName}
+                            onChange={(e) => setNewEquipmentName(e.target.value)}
+                            placeholder="예: 지니어스, 엘리아드"
+                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxSizing: 'border-box' }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#374151' }}>기구 번호</label>
+                        <input
+                            type="text"
+                            value={newEquipmentNumber}
+                            onChange={(e) => setNewEquipmentNumber(e.target.value)}
+                            placeholder="예: #1, #2, #3"
+                            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #e2e8f0', boxSizing: 'border-box' }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#374151' }}>
+                            📷 사진 <span style={{ color: '#ef4444' }}>(필수)</span>
+                        </label>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                            <button
+                                onClick={() => newEquipCameraRef.current?.click()}
+                                style={{ flex: 1, padding: '0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                            >
+                                📷 촬영
+                            </button>
+                            <button
+                                onClick={() => newEquipAlbumRef.current?.click()}
+                                style={{ flex: 1, padding: '0.75rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                            >
+                                🖼️ 앨범
+                            </button>
+                        </div>
+                        <input ref={newEquipCameraRef} type="file" accept="image/*" capture="environment" onChange={handleNewEquipPhoto} style={{ display: 'none' }} />
+                        <input ref={newEquipAlbumRef} type="file" accept="image/*" onChange={handleNewEquipPhoto} style={{ display: 'none' }} />
+
+                        {newEquipmentPhoto && (
+                            <div style={{ marginTop: '0.5rem' }}>
+                                <img src={newEquipmentPhoto} alt="new-equip" style={{ width: '100px', height: '100px', objectFit: 'cover', borderRadius: '8px' }} />
+                            </div>
+                        )}
+                    </div>
+
+                    <button
+                        onClick={handleNewEquipmentRegister}
+                        disabled={processing}
+                        style={{
+                            width: '100%',
+                            padding: '1rem',
+                            background: processing ? '#94a3b8' : 'linear-gradient(135deg, #10b981 0%, #047857 100%)',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '12px',
+                            fontSize: '1rem',
+                            fontWeight: 'bold',
+                            cursor: processing ? 'not-allowed' : 'pointer'
+                        }}
+                    >
+                        {processing ? '등록 중...' : '✅ 기구 등록'}
+                    </button>
+                </div>
+            )}
+
+            {/* 하단 네비게이션 */}
+            <SalesBottomNav />
+        </div>
+    );
+}
+
+export default SalesInOutRegisterPage;
