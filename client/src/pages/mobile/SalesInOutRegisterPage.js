@@ -17,6 +17,8 @@ axios.defaults.headers.common['ngrok-skip-browser-warning'] = '69420';
  * - 입고: 출고 상태인 기구 목록 표시 → 입고처리 버튼
  * - 출고: 입고 상태인 기구 목록 표시 → 출고 폼 (병원, 담당자, 사진)
  * - 신규등록: 기구명 + 번호 + 사진 등록
+ *   - 촬영/앨범: 사진과 함께 등록
+ *   - 간편: 사진 없이 텍스트만으로 등록
  */
 function SalesInOutRegisterPage() {
     // URL에서 mode 파라미터 읽기
@@ -46,6 +48,7 @@ function SalesInOutRegisterPage() {
     const [newEquipmentName, setNewEquipmentName] = useState('');
     const [newEquipmentNumber, setNewEquipmentNumber] = useState('');
     const [newEquipmentPhoto, setNewEquipmentPhoto] = useState(null);
+    const [quickRegisterMode, setQuickRegisterMode] = useState(false); // 간편 등록 모드 (사진 없이)
 
     // 파일 입력 ref
     const cameraInputRef = useRef(null);
@@ -403,8 +406,8 @@ function SalesInOutRegisterPage() {
             setMessage('❌ 기구 번호를 입력해주세요 (예: #1, #2)');
             return;
         }
-        if (!newEquipmentPhoto) {
-            setMessage('❌ 사진을 촬영해주세요 (필수)');
+        if (!newEquipmentPhoto && !quickRegisterMode) {
+            setMessage('❌ 사진을 촬영해주세요 (또는 간편 등록 사용)');
             return;
         }
 
@@ -425,7 +428,7 @@ function SalesInOutRegisterPage() {
 
             const lendingItemId = productRes.data.lending_item_id;
 
-            // 사진 업로드
+            // 사진 업로드 (간편 등록이 아닌 경우에만)
             if (lendingItemId && newEquipmentPhoto) {
                 console.log('[handleNewEquipmentRegister] Uploading photo');
                 await axios.put(`/api/lending/items/${lendingItemId}/photo`, {
@@ -442,6 +445,7 @@ function SalesInOutRegisterPage() {
                 setNewEquipmentName('');
                 setNewEquipmentNumber('');
                 setNewEquipmentPhoto(null);
+                setQuickRegisterMode(false);
                 setMessage('');
             }, 1500);
 
@@ -845,20 +849,26 @@ function SalesInOutRegisterPage() {
 
                     <div style={{ marginBottom: '1rem' }}>
                         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', color: '#374151' }}>
-                            📷 사진 <span style={{ color: '#ef4444' }}>(필수)</span>
+                            📷 사진 {!quickRegisterMode && <span style={{ color: '#ef4444' }}>(필수)</span>}
                         </label>
                         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                             <button
-                                onClick={() => newEquipCameraRef.current?.click()}
-                                style={{ flex: 1, padding: '0.75rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                                onClick={() => { setQuickRegisterMode(false); newEquipCameraRef.current?.click(); }}
+                                style={{ flex: 1, padding: '0.75rem', background: quickRegisterMode ? '#94a3b8' : '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
                             >
                                 📷 촬영
                             </button>
                             <button
-                                onClick={() => newEquipAlbumRef.current?.click()}
-                                style={{ flex: 1, padding: '0.75rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                                onClick={() => { setQuickRegisterMode(false); newEquipAlbumRef.current?.click(); }}
+                                style={{ flex: 1, padding: '0.75rem', background: quickRegisterMode ? '#94a3b8' : '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
                             >
                                 🖼️ 앨범
+                            </button>
+                            <button
+                                onClick={() => { setQuickRegisterMode(true); setNewEquipmentPhoto(null); setMessage('✍️ 간편 등록 모드 - 사진 없이 등록'); }}
+                                style={{ flex: 1, padding: '0.75rem', background: quickRegisterMode ? '#f97316' : '#64748b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: quickRegisterMode ? 'bold' : 'normal' }}
+                            >
+                                ✍️ 간편
                             </button>
                         </div>
                         <input ref={newEquipCameraRef} type="file" accept="image/*" capture="environment" onChange={handleNewEquipPhoto} style={{ display: 'none' }} />
@@ -867,6 +877,12 @@ function SalesInOutRegisterPage() {
                         {newEquipmentPhoto && (
                             <div style={{ marginTop: '0.5rem' }}>
                                 <img src={newEquipmentPhoto} alt="new-equip" style={{ width: '100px', height: '100px', objectFit: 'cover', borderRadius: '8px' }} />
+                            </div>
+                        )}
+                        {quickRegisterMode && !newEquipmentPhoto && (
+                            <div style={{ marginTop: '0.5rem', padding: '1rem', background: '#f1f5f9', borderRadius: '8px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '2rem', marginBottom: '0.25rem' }}>📋</div>
+                                <div style={{ color: '#64748b', fontSize: '0.85rem' }}>사진없음 - 텍스트만 등록</div>
                             </div>
                         )}
                     </div>

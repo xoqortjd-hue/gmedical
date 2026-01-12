@@ -13,10 +13,10 @@ axios.defaults.headers.common['ngrok-skip-browser-warning'] = '69420';
  * SalesStatusDashboard - 영업팀 입출고 현황 대시보드
  * 
  * 3열 그리드 레이아웃으로 기구별 입고/출고 상태 표시
- * - 동일 기구명이 가로로 나열
+ * - 동일 기구명: 최신 상태만 표시 (중복 제거)
  * - 입고(부산사무실): 녹색 배지
  * - 출고(그 외 장소): 빨간색 배지
- * - 최초: 기구 수 많은 순 정렬
+ * - 정렬: 카테고리명 가나다순 고정
  */
 function SalesStatusDashboard() {
     const [equipmentGroups, setEquipmentGroups] = useState([]);
@@ -54,13 +54,37 @@ function SalesStatusDashboard() {
                 item.category !== 'BIOLOGIC' && item.category !== 'biologic'
             );
 
-            // 기구명에서 번호 추출하여 그룹화
+            // 1단계: 각 기구명당 최신 이력만 선택 (중복 제거)
+            const latestByName = {};
+
+            filtered.forEach(item => {
+                const name = item.product_name;
+                const lastDate = item.deploy_date || item.lending_date || '';
+
+                // 기존 항목이 없거나, 현재 항목이 더 최근인 경우에만 업데이트
+                if (!latestByName[name] ||
+                    (lastDate && (!latestByName[name].lastUpdated || lastDate > latestByName[name].lastUpdated))) {
+
+                    // 입고/출고 상태 판별 (부산사무실 = 입고)
+                    const isInbound = item.hospital_name?.includes('부산사무실');
+
+                    latestByName[name] = {
+                        id: item.id,
+                        name: item.product_name,
+                        status: isInbound ? 'inbound' : 'outbound',
+                        hospital: item.hospital_name,
+                        lastUpdated: lastDate
+                    };
+                }
+            });
+
+            // 2단계: 기구명에서 번호 추출하여 그룹화
             // 예: "지니어스#1" -> baseName: "지니어스", number: "#1"
             const grouped = {};
 
-            filtered.forEach(item => {
+            Object.values(latestByName).forEach(item => {
                 // 기구명에서 #번호 또는 숫자 추출
-                const match = item.product_name?.match(/^(.+?)(#?\d+)$/);
+                const match = item.name?.match(/^(.+?)(#?\d+)$/);
                 let baseName, number;
 
                 if (match) {
@@ -68,7 +92,7 @@ function SalesStatusDashboard() {
                     number = match[2];
                 } else {
                     // 번호가 없는 경우 전체 이름을 baseName으로
-                    baseName = item.product_name || '미분류';
+                    baseName = item.name || '미분류';
                     number = '';
                 }
 
@@ -76,20 +100,13 @@ function SalesStatusDashboard() {
                     grouped[baseName] = [];
                 }
 
-                // 입고/출고 상태 판별 (부산사무실 = 입고)
-                const isInbound = item.hospital_name?.includes('부산사무실');
-
                 grouped[baseName].push({
-                    id: item.id,
-                    name: item.product_name,
-                    number: number,
-                    status: isInbound ? 'inbound' : 'outbound',
-                    hospital: item.hospital_name,
-                    lastUpdated: item.deploy_date || item.lending_date
+                    ...item,
+                    number: number
                 });
             });
 
-            // 배열로 변환 및 정렬 (기구 수 많은 순)
+            // 3단계: 배열로 변환 및 정렬
             const groupArray = Object.entries(grouped).map(([baseName, items]) => ({
                 baseName,
                 items: items.sort((a, b) => {
@@ -101,7 +118,7 @@ function SalesStatusDashboard() {
                 count: items.length
             }));
 
-            // 기구 수 많은 순 정렬
+            // 기구 수 많은 순 정렬 (기존 방식 유지)
             groupArray.sort((a, b) => b.count - a.count);
 
             setEquipmentGroups(groupArray);
