@@ -108,21 +108,51 @@ function SalesInOutRegisterPage() {
         }
     };
 
+    // 기구 목록 조회 및 중복 제거 (최신 상태만 유지)
+    const fetchAndDeduplicateItems = async () => {
+        const res = await axios.get('/api/lending/items');
+
+        // BIOLOGIC 제외
+        const equipmentOnly = res.data.filter(item =>
+            item.category !== 'BIOLOGIC' && item.category !== 'biologic'
+        );
+
+        // 중복 제거: 기구명 기준 최신 이력만 선택
+        const latestByName = {};
+        equipmentOnly.forEach(item => {
+            const name = item.product_name;
+            const lastDate = item.deploy_date || item.lending_date || '';
+
+            // 기존 항목이 없거나, 현재 항목이 더 최근인 경우에만 업데이트
+            if (!latestByName[name] ||
+                (lastDate && (!latestByName[name].lastUpdated || lastDate > latestByName[name].lastUpdated))) {
+                latestByName[name] = {
+                    ...item,
+                    lastUpdated: lastDate
+                };
+            }
+        });
+
+        return Object.values(latestByName);
+    };
+
     // 출고 상태 기구 조회 (입고 처리 대상)
     // 부산사무실이 아닌 곳 = 출고 상태
     const fetchOutboundItems = async () => {
         setLoading(true);
         try {
             console.log('[fetchOutboundItems] Fetching...');
-            const res = await axios.get('/api/lending/items');
-            // BIOLOGIC 제외 - 영업팀은 장비/기구만 관리
-            const equipmentOnly = res.data.filter(item =>
-                item.category !== 'BIOLOGIC' && item.category !== 'biologic'
-            );
+
+            // 중복 제거된 유니크한 기구 목록 가져오기
+            const uniqueItems = await fetchAndDeduplicateItems();
+
             // 부산사무실(hospital_name에 "부산사무실" 포함)이 아닌 항목 필터링
-            const outboundItems = equipmentOnly.filter(item =>
+            // hospital_name이 없는 경우(null)도 출고된 것으로 간주할 수 있으나, 
+            // 데이터 무결성을 위해 hospital_name이 있는 것 중 부산사무실이 아닌 것만 필터링
+            const outboundItems = uniqueItems.filter(item =>
                 item.hospital_name && !item.hospital_name.includes('부산사무실')
             );
+
             // 기구명 기준 중복 제거 후 최신순 정렬
             const sorted = outboundItems.sort((a, b) =>
                 new Date(b.deploy_date || b.lending_date || 0) - new Date(a.deploy_date || a.lending_date || 0)
@@ -143,15 +173,15 @@ function SalesInOutRegisterPage() {
         setLoading(true);
         try {
             console.log('[fetchInboundItems] Fetching...');
-            const res = await axios.get('/api/lending/items');
-            // BIOLOGIC 제외 - 영업팀은 장비/기구만 관리
-            const equipmentOnly = res.data.filter(item =>
-                item.category !== 'BIOLOGIC' && item.category !== 'biologic'
-            );
+
+            // 중복 제거된 유니크한 기구 목록 가져오기
+            const uniqueItems = await fetchAndDeduplicateItems();
+
             // 부산사무실인 항목만 필터링
-            const inboundItems = equipmentOnly.filter(item =>
+            const inboundItems = uniqueItems.filter(item =>
                 item.hospital_name && item.hospital_name.includes('부산사무실')
             );
+
             const sorted = inboundItems.sort((a, b) =>
                 new Date(b.deploy_date || b.lending_date || 0) - new Date(a.deploy_date || a.lending_date || 0)
             );
