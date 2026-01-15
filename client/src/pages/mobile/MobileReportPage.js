@@ -59,19 +59,7 @@ function MobileReportPage() {
         }
     };
 
-    // 이동 경로 표시
-    const getMovementPath = (item) => {
-        if (!item.previous_hospital && !item.movement_type) {
-            return item.current_hospital;
-        }
-        if (item.is_at_office) {
-            return `${item.previous_hospital || '외부'} → 사무실 (입고)`;
-        }
-        if (item.previous_hospital) {
-            return `${item.previous_hospital} → ${item.current_hospital}`;
-        }
-        return `→ ${item.current_hospital} (배치)`;
-    };
+    // 이동 경로는 API에서 movement_path로 제공됨 (날짜 포함)
 
     return (
         <div className="mobile-container report-page">
@@ -184,7 +172,7 @@ function MobileReportPage() {
                                             <tr key={item.lending_item_id} className={item.is_at_office ? 'at-office' : ''}>
                                                 <td className="equipment-name">{item.product_name}</td>
                                                 <td className="movement-path">
-                                                    {getMovementPath(item)}
+                                                    {item.movement_path || item.current_hospital}
                                                 </td>
                                                 <td className="movement-date">{formatDate(item.movement_date)}</td>
                                                 <td className="moved-by">{item.moved_by || '-'}</td>
@@ -203,7 +191,7 @@ function MobileReportPage() {
                     {/* 영업팀 입출고 현황판 섹션 */}
                     <section className="report-section sales-status-section">
                         <div className="section-header">
-                            <h2>📋 영업팀 입출고 현황판</h2>
+                            <h2>📋 영업팀 장비 입출고 현황판</h2>
                             {salesStatusData && (
                                 <span className="count-label">
                                     입고 {salesStatusData.summary.inbound_count} / 출고 {salesStatusData.summary.outbound_count}
