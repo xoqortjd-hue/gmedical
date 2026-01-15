@@ -104,6 +104,11 @@ const Navigation = () => {
                   ⏰ 유통기한 알림
                 </Link>
               </li>
+              <li>
+                <Link to="/report" className={isActive('/report')}>
+                  📊 리포트
+                </Link>
+              </li>
             </ul>
           </li>
           <li>

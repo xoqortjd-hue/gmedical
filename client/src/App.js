@@ -21,10 +21,12 @@ import ConsumableRegistrationStatusPage from './pages/ConsumableRegistrationStat
 import BiologicRegistrationStatusPage from './pages/BiologicRegistrationStatusPage';
 import LendingProductRegistrationPage from './pages/LendingProductRegistrationPage';
 import CEODashboardPage from './pages/CEODashboardPage';
+import ReportPage from './pages/ReportPage';
 import MobileCEODashboardPage from './pages/mobile/MobileCEODashboardPage';
 import MobileInboundPage from './pages/mobile/MobileInboundPage';
 import MobileOutboundPage from './pages/mobile/MobileOutboundPage';
 import MobileBiologicInventoryPage from './pages/mobile/MobileBiologicInventoryPage';
+import MobileReportPage from './pages/mobile/MobileReportPage';
 import MobileTeamSelectPage from './pages/mobile/MobileTeamSelectPage';
 import SalesHomePage from './pages/mobile/SalesHomePage';
 import SalesInOutRegisterPage from './pages/mobile/SalesInOutRegisterPage';
@@ -78,6 +80,9 @@ function AppContent() {
           {/* CEO 대시보드 라우트 */}
           <Route path="/ceo/dashboard" element={<CEODashboardPage />} />
 
+          {/* 리포트 라우트 */}
+          <Route path="/report" element={<ReportPage />} />
+
           {/* 모바일 PWA 라우트 - 팀 선택 */}
           <Route path="/mobile" element={<MobileTeamSelectPage />} />
 
@@ -95,6 +100,7 @@ function AppContent() {
           <Route path="/mobile/inbound" element={<MobileInboundPage />} />
           <Route path="/mobile/outbound" element={<MobileOutboundPage />} />
           <Route path="/mobile/biologic-inventory" element={<MobileBiologicInventoryPage />} />
+          <Route path="/mobile/report" element={<MobileReportPage />} />
         </Routes>
       </main>
       {/* 모바일 페이지에서 하단 네비게이션 표시 (영업팀 제외 - 자체 네비 사용) */}

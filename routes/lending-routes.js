@@ -1261,5 +1261,325 @@ router.delete('/biologic-inventory/:id', (req, res) => {
     });
 });
 
+// ===== 리포트 API =====
+
+// 거래 이력 조회 (병원별 수술 건수 - 출고→입고 사이클 = 1건 수술)
+router.get('/report/transaction-summary', (req, res) => {
+    const { period = 'weekly' } = req.query;
+
+    // 기간 계산: weekly = 최근 7일, monthly = 최근 30일
+    const days = period === 'monthly' ? 30 : 7;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    const endDate = new Date();
+    const endDateStr = endDate.toISOString().split('T')[0];
+
+    // 병원별 수술 건수 집계 (입고 = 수술 완료, 병원에서 부산사무실로 돌아온 건)
+    // 1건의 수술 = 장비가 병원에서 사용 후 부산사무실로 입고된 것
+    const query = `
+        SELECT 
+            h.id as hospital_id,
+            h.name as hospital_name,
+            COUNT(CASE 
+                WHEN (lm.movement_type = 'MOVE' AND lm.from_hospital_id = h.id AND lm.to_hospital_id = 2)
+                  OR (lm.movement_type = 'RETURN' AND lm.from_hospital_id = h.id)
+                THEN 1
+                ELSE NULL
+            END) as surgery_count
+        FROM hospitals h
+        LEFT JOIN lending_movements lm ON (
+            lm.from_hospital_id = h.id
+            AND date(lm.movement_date) >= date(?)
+            AND date(lm.movement_date) <= date(?)
+        )
+        WHERE h.id != 2
+        GROUP BY h.id, h.name
+        HAVING surgery_count > 0
+        ORDER BY surgery_count DESC
+    `;
+
+    db.all(query, [startDateStr, endDateStr], (err, rows) => {
+        if (err) {
+            console.error('거래 이력 조회 실패:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+
+        // 합계 계산
+        const totalSurgeries = rows.reduce((acc, row) => acc + (row.surgery_count || 0), 0);
+
+        res.json({
+            period,
+            start_date: startDateStr,
+            end_date: endDateStr,
+            hospitals: rows,
+            totals: {
+                total_surgeries: totalSurgeries,
+                hospital_count: rows.length
+            }
+        });
+    });
+});
+
+// 장비 입출고 현황 조회 (현재 위치 + 최근 3건 이동 경로)
+router.get('/report/equipment-status', (req, res) => {
+    const { category = 'EQUIPMENT' } = req.query;
+
+    // 먼저 장비 목록 조회
+    const equipmentQuery = `
+        SELECT DISTINCT
+            p.id as product_id,
+            p.name as product_name,
+            p.barcode,
+            li.id as lending_item_id,
+            h_current.name as current_hospital,
+            h_current.id as current_hospital_id
+        FROM products p
+        JOIN lending_items li ON p.id = li.product_id AND li.status = 'ACTIVE'
+        JOIN hospitals h_current ON li.hospital_id = h_current.id
+        WHERE p.category = ?
+        ORDER BY p.name
+    `;
+
+    db.all(equipmentQuery, [category], (err, equipmentRows) => {
+        if (err) {
+            console.error('장비 현황 조회 실패:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+
+        // 장비명(product_name) 기준으로 중복 제거
+        const uniqueEquipment = {};
+        equipmentRows.forEach(row => {
+            if (!uniqueEquipment[row.product_name]) {
+                uniqueEquipment[row.product_name] = row;
+            }
+        });
+
+        const deduplicatedEquipment = Object.values(uniqueEquipment);
+
+        // 각 장비의 최근 3건 이동 이력 조회
+        const movementQuery = `
+            SELECT 
+                lm.lending_item_id,
+                lm.movement_date,
+                lm.moved_by,
+                lm.movement_type,
+                h_from.name as from_hospital,
+                h_to.name as to_hospital
+            FROM lending_movements lm
+            LEFT JOIN hospitals h_from ON lm.from_hospital_id = h_from.id
+            LEFT JOIN hospitals h_to ON lm.to_hospital_id = h_to.id
+            WHERE lm.lending_item_id IN (${deduplicatedEquipment.map(e => e.lending_item_id).join(',') || '0'})
+            ORDER BY lm.lending_item_id, lm.movement_date DESC
+        `;
+
+        db.all(movementQuery, [], (err2, movementRows) => {
+            if (err2) {
+                console.error('이동 이력 조회 실패:', err2.message);
+                return res.status(500).json({ error: err2.message });
+            }
+
+            // 장비별 이동 이력 그룹핑 (최근 이력 모두)
+            const movementsByItem = {};
+            movementRows.forEach(row => {
+                if (!movementsByItem[row.lending_item_id]) {
+                    movementsByItem[row.lending_item_id] = [];
+                }
+                movementsByItem[row.lending_item_id].push(row);
+            });
+
+            // 날짜 포맷 함수
+            const formatDateShort = (dateStr) => {
+                if (!dateStr) return '';
+                try {
+                    const d = new Date(dateStr);
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${month}-${day}`;
+                } catch {
+                    return '';
+                }
+            };
+
+            // 결과 조합
+            const items = deduplicatedEquipment.map(equip => {
+                const movements = movementsByItem[equip.lending_item_id] || [];
+
+                // movements는 최신순으로 정렬되어 있음 (최신 이동이 인덱스 0)
+                let movementPath = '';
+
+                if (movements.length > 0) {
+                    // 최근 2개 이동을 가져와서 경로 구성
+                    // 예: 이동1: A→B (12-10), 이동2: B→C (12-15)
+                    // 결과: A (12-10) → B (12-15) → C (현재)
+
+                    const recentMovements = movements.slice(0, 2); // 최근 2건
+
+                    // 역순으로 처리 (오래된 것부터)
+                    const reversedMoves = [...recentMovements].reverse();
+
+                    const pathParts = [];
+
+                    reversedMoves.forEach((move, idx) => {
+                        // 첫 번째 이동의 출발지 추가 (날짜는 해당 이동 날짜)
+                        if (idx === 0 && move.from_hospital) {
+                            const dateStr = formatDateShort(move.movement_date);
+                            pathParts.push(dateStr ? `${move.from_hospital} (${dateStr})` : move.from_hospital);
+                        }
+
+                        // 도착지 추가
+                        if (move.to_hospital) {
+                            // 마지막 이동의 도착지는 현재 위치 = 날짜 없이
+                            if (idx === reversedMoves.length - 1) {
+                                // 현재 위치는 equip.current_hospital 사용
+                                pathParts.push(equip.current_hospital);
+                            } else {
+                                // 중간 위치는 다음 이동 날짜 사용
+                                const nextMove = reversedMoves[idx + 1];
+                                const dateStr = nextMove ? formatDateShort(nextMove.movement_date) : '';
+                                pathParts.push(dateStr ? `${move.to_hospital} (${dateStr})` : move.to_hospital);
+                            }
+                        }
+                    });
+
+                    // 중복 제거
+                    const uniquePath = [];
+                    pathParts.forEach(p => {
+                        if (uniquePath[uniquePath.length - 1] !== p) {
+                            uniquePath.push(p);
+                        }
+                    });
+
+                    // 최근 3개 위치만 선택
+                    movementPath = uniquePath.slice(-3).join(' → ');
+                } else {
+                    movementPath = equip.current_hospital;
+                }
+
+                const latestMovement = movements[0];
+
+                return {
+                    product_id: equip.product_id,
+                    product_name: equip.product_name,
+                    barcode: equip.barcode,
+                    lending_item_id: equip.lending_item_id,
+                    current_hospital: equip.current_hospital,
+                    current_hospital_id: equip.current_hospital_id,
+                    movement_path: movementPath,
+                    movement_date: latestMovement?.movement_date || null,
+                    moved_by: latestMovement?.moved_by || null,
+                    is_at_office: equip.current_hospital_id === 2
+                };
+            });
+
+            // 최근 이동일 기준 정렬
+            items.sort((a, b) => {
+                const dateA = a.movement_date ? new Date(a.movement_date) : new Date(0);
+                const dateB = b.movement_date ? new Date(b.movement_date) : new Date(0);
+                return dateB - dateA;
+            });
+
+            res.json({
+                category,
+                items
+            });
+        });
+    });
+});
+
+// 영업팀 입출고 현황판 조회 (그리드 형태)
+router.get('/report/sales-status', (req, res) => {
+    // 장비별 현재 상태 (입고=부산사무실, 출고=다른곳)
+    const query = `
+        SELECT 
+            p.id as product_id,
+            p.name as product_name,
+            li.id as lending_item_id,
+            h.id as hospital_id,
+            h.name as hospital_name,
+            li.deploy_date,
+            lm.moved_by,
+            CASE WHEN h.id = 2 THEN 'inbound' ELSE 'outbound' END as status
+        FROM products p
+        JOIN lending_items li ON p.id = li.product_id AND li.status = 'ACTIVE'
+        JOIN hospitals h ON li.hospital_id = h.id
+        LEFT JOIN (
+            SELECT lm1.lending_item_id, lm1.moved_by
+            FROM lending_movements lm1
+            INNER JOIN (
+                SELECT lending_item_id, MAX(movement_date) as max_date
+                FROM lending_movements
+                GROUP BY lending_item_id
+            ) lm2 ON lm1.lending_item_id = lm2.lending_item_id 
+                AND lm1.movement_date = lm2.max_date
+        ) lm ON li.id = lm.lending_item_id
+        WHERE p.category = 'EQUIPMENT'
+        ORDER BY p.name, li.id
+    `;
+
+    db.all(query, [], (err, rows) => {
+        if (err) {
+            console.error('영업팀 현황판 조회 실패:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+
+        // 장비명(product_name) 기준으로 중복 제거: 가장 최근 deploy_date 유지
+        const uniqueItems = {};
+        rows.forEach(row => {
+            const key = row.product_name;
+            if (!uniqueItems[key]) {
+                uniqueItems[key] = row;
+            } else {
+                // 이미 존재하면 더 최신 deploy_date로 교체
+                const existingDate = uniqueItems[key].deploy_date ? new Date(uniqueItems[key].deploy_date) : new Date(0);
+                const newDate = row.deploy_date ? new Date(row.deploy_date) : new Date(0);
+                if (newDate > existingDate) {
+                    uniqueItems[key] = row;
+                }
+            }
+        });
+
+        const deduplicatedRows = Object.values(uniqueItems);
+
+        // 장비명으로 그룹핑 (예: 지니어스#1, 지니어스#2 ...)
+        const groupedByName = {};
+        deduplicatedRows.forEach(row => {
+            // 장비명에서 기본 이름 추출 (예: "지니어스#1" -> "지니어스")
+            const baseName = row.product_name.replace(/#\d+$/, '').trim();
+            if (!groupedByName[baseName]) {
+                groupedByName[baseName] = [];
+            }
+            groupedByName[baseName].push({
+                product_name: row.product_name,
+                lending_item_id: row.lending_item_id,
+                hospital_name: row.hospital_name,
+                status: row.status,
+                deploy_date: row.deploy_date,
+                moved_by: row.moved_by
+            });
+        });
+
+        // 배열로 변환하고 장비 수 기준으로 정렬
+        const groups = Object.entries(groupedByName)
+            .map(([baseName, items]) => ({
+                baseName,
+                items: items.sort((a, b) => a.product_name.localeCompare(b.product_name)),
+                inboundCount: items.filter(i => i.status === 'inbound').length,
+                outboundCount: items.filter(i => i.status === 'outbound').length
+            }))
+            .sort((a, b) => b.items.length - a.items.length);
+
+        res.json({
+            groups,
+            summary: {
+                total_equipment: deduplicatedRows.length,
+                inbound_count: deduplicatedRows.filter(r => r.status === 'inbound').length,
+                outbound_count: deduplicatedRows.filter(r => r.status === 'outbound').length
+            }
+        });
+    });
+});
+
 module.exports = router;
 

@@ -47,6 +47,14 @@ function MobileBottomNav() {
                 <span className="nav-icon">📋</span>
                 <span className="nav-label">현황</span>
             </Link>
+
+            <Link
+                to="/mobile/report"
+                className={`nav-item ${isActive('/mobile/report') ? 'active' : ''}`}
+            >
+                <span className="nav-icon">📊</span>
+                <span className="nav-label">리포트</span>
+            </Link>
         </nav>
     );
 }

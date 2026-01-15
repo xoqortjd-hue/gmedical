@@ -739,3 +739,427 @@
 .mobile-page-with-nav {
   padding-bottom: 80px;
 }
+
+/* ===== Report Page Styles ===== */
+.report-page {
+  padding: 0;
+}
+
+.report-page .mobile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+}
+
+.report-page .mobile-header h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.print-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.print-btn:active {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Period Tabs */
+.period-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem;
+  background: white;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e0e0e0;
+  background: white;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn.active {
+  background: #6366f1;
+  color: white;
+  border-color: #6366f1;
+}
+
+.tab-btn:not(.active):active {
+  background: #f3f4f6;
+}
+
+/* Report Sections */
+.report-section {
+  background: white;
+  margin: 1rem;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #1f2937;
+}
+
+.period-label,
+.count-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+  background: #e5e7eb;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+/* Report Tables */
+.report-table-container {
+  overflow-x: auto;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.report-table th,
+.report-table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.report-table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #4b5563;
+  font-size: 0.8rem;
+}
+
+.report-table .hospital-name,
+.report-table .equipment-name {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.report-table .count {
+  text-align: center;
+  font-weight: 600;
+}
+
+.report-table .count.inbound {
+  color: #10b981;
+}
+
+.report-table .count.outbound {
+  color: #ef4444;
+}
+
+.report-table .count.total {
+  color: #6366f1;
+}
+
+.report-table .movement-path {
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.report-table .movement-date,
+.report-table .moved-by {
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-align: center;
+}
+
+.report-table .at-office {
+  background: #f0fdf4;
+}
+
+.report-table .totals-row {
+  background: #f3f4f6;
+}
+
+.report-table tfoot td {
+  border-top: 2px solid #d1d5db;
+}
+
+/* Empty State */
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: #6b7280;
+}
+
+/* Loading */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: #6b7280;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Print Only / No Print */
+.print-only {
+  display: none;
+}
+
+/* ===== Print Styles ===== */
+@media print {
+
+  /* 기본 설정 */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background: white !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* 화면 전용 요소 숨김 */
+  .no-print,
+  .mobile-bottom-nav,
+  .mobile-header:not(.print-header),
+  .period-tabs,
+  .print-btn {
+    display: none !important;
+  }
+
+  /* 인쇄 전용 요소 표시 */
+  .print-only {
+    display: block !important;
+  }
+
+  .print-header {
+    text-align: center;
+    padding: 1rem;
+    border-bottom: 2px solid #333;
+    margin-bottom: 1rem;
+  }
+
+  .print-header h1 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.5rem;
+    color: #333;
+  }
+
+  .print-header p {
+    margin: 0;
+    color: #666;
+    font-size: 0.9rem;
+  }
+
+  /* 컨테이너 */
+  .mobile-container.report-page {
+    min-height: auto;
+    background: white;
+    padding: 0;
+  }
+
+  .mobile-page-with-nav {
+    padding-bottom: 0;
+  }
+
+  /* 섹션 */
+  .report-section {
+    margin: 0 0 1.5rem 0;
+    box-shadow: none;
+    border: 1px solid #ccc;
+    page-break-inside: avoid;
+  }
+
+  .section-header {
+    background: #f5f5f5 !important;
+    border-bottom: 1px solid #ccc;
+  }
+
+  /* 테이블 */
+  .report-table {
+    font-size: 0.8rem;
+  }
+
+  .report-table th {
+    background: #f5f5f5 !important;
+  }
+
+  .report-table .at-office {
+    background: #e8f5e9 !important;
+  }
+
+  .report-table .totals-row {
+    background: #f5f5f5 !important;
+  }
+
+  /* 페이지 설정 */
+  @page {
+    size: A4 portrait;
+    margin: 1cm;
+  }
+
+  /* 영업팀 현황판 인쇄 스타일 */
+  .sales-grid-container {
+    display: block;
+  }
+
+  .equipment-group {
+    page-break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+
+  .equipment-items-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+}
+
+/* ===== 영업팀 입출고 현황판 스타일 ===== */
+.sales-status-section {
+  margin-bottom: 2rem;
+}
+
+.sales-grid-container {
+  padding: 1rem;
+}
+
+.equipment-group {
+  margin-bottom: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: #e9ecef;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.group-name {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #333;
+}
+
+.group-stats {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+}
+
+.stat-inbound {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.stat-outbound {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.equipment-items-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.equipment-item {
+  background: white;
+  border-radius: 8px;
+  padding: 0.75rem;
+  text-align: center;
+  border: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.equipment-item.inbound {
+  border-color: #10b981;
+  background: #f0fdf4;
+}
+
+.equipment-item.outbound {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.item-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #1f2937;
+  margin-bottom: 0.25rem;
+}
+
+.item-status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.item-status-badge.inbound {
+  background: #10b981;
+  color: white;
+}
+
+.item-status-badge.outbound {
+  background: #ef4444;
+  color: white;
+}
+
+.item-location {
+  font-size: 0.7rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
