@@ -1328,18 +1328,19 @@ router.get('/report/equipment-status', (req, res) => {
 
     // 먼저 장비 목록 조회
     const equipmentQuery = `
-        SELECT DISTINCT
+        SELECT 
             p.id as product_id,
             p.name as product_name,
             p.barcode,
             li.id as lending_item_id,
+            li.deploy_date,
             h_current.name as current_hospital,
             h_current.id as current_hospital_id
         FROM products p
         JOIN lending_items li ON p.id = li.product_id AND li.status = 'ACTIVE'
         JOIN hospitals h_current ON li.hospital_id = h_current.id
         WHERE p.category = ?
-        ORDER BY p.name
+        ORDER BY p.name, li.deploy_date DESC
     `;
 
     db.all(equipmentQuery, [category], (err, equipmentRows) => {
@@ -1348,10 +1349,13 @@ router.get('/report/equipment-status', (req, res) => {
             return res.status(500).json({ error: err.message });
         }
 
-        // 장비명(product_name) 기준으로 중복 제거
+        // 장비명(product_name) 기준으로 중복 제거 - 최신 deploy_date 기준
         const uniqueEquipment = {};
         equipmentRows.forEach(row => {
-            if (!uniqueEquipment[row.product_name]) {
+            const existing = uniqueEquipment[row.product_name];
+            // 기존 항목이 없거나, 현재 항목의 deploy_date가 더 최신인 경우 업데이트
+            if (!existing ||
+                (row.deploy_date && (!existing.deploy_date || row.deploy_date > existing.deploy_date))) {
                 uniqueEquipment[row.product_name] = row;
             }
         });
