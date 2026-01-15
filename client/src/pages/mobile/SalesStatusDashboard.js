@@ -28,6 +28,7 @@ function SalesStatusDashboard() {
     const [movements, setMovements] = useState([]);
     const [photos, setPhotos] = useState([]);
     const [detailLoading, setDetailLoading] = useState(false);
+    const [selectedPhoto, setSelectedPhoto] = useState(null); // 확대 보기용 사진
 
     // 디버그 로그
     console.log('[SalesStatusDashboard] Rendering');
@@ -479,7 +480,7 @@ function SalesStatusDashboard() {
                                                             borderRadius: '8px',
                                                             cursor: 'pointer'
                                                         }}
-                                                        onClick={() => window.open(photo.photo_url, '_blank')}
+                                                        onClick={() => setSelectedPhoto(photo.photo_url)}
                                                     />
                                                 ))}
                                             </div>
@@ -489,6 +490,66 @@ function SalesStatusDashboard() {
                             </>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* 사진 확대 보기 오버레이 */}
+            {selectedPhoto && (
+                <div
+                    onClick={() => setSelectedPhoto(null)}
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0,0,0,0.95)',
+                        zIndex: 3000,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '1rem'
+                    }}
+                >
+                    {/* 닫기 버튼 */}
+                    <button
+                        onClick={() => setSelectedPhoto(null)}
+                        style={{
+                            position: 'absolute',
+                            top: '1rem',
+                            right: '1rem',
+                            background: 'rgba(255,255,255,0.2)',
+                            border: 'none',
+                            color: 'white',
+                            fontSize: '1.5rem',
+                            cursor: 'pointer',
+                            borderRadius: '50%',
+                            width: '44px',
+                            height: '44px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                    >✕</button>
+
+                    {/* 사진 */}
+                    <img
+                        src={selectedPhoto}
+                        alt="확대 사진"
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            maxWidth: '95%',
+                            maxHeight: '85vh',
+                            objectFit: 'contain',
+                            borderRadius: '8px'
+                        }}
+                    />
+
+                    {/* 안내 문구 */}
+                    <p style={{ color: '#999', marginTop: '1rem', fontSize: '0.85rem' }}>
+                        화면을 탭하여 닫기
+                    </p>
                 </div>
             )}
 
