@@ -28,7 +28,8 @@ function SalesStatusDashboard() {
     const [movements, setMovements] = useState([]);
     const [photos, setPhotos] = useState([]);
     const [detailLoading, setDetailLoading] = useState(false);
-    const [selectedPhoto, setSelectedPhoto] = useState(null); // 확대 보기용 사진
+    const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null); // 확대 보기용 사진 인덱스
+    const [touchStart, setTouchStart] = useState(null); // 터치 시작 위치
 
     // 디버그 로그
     console.log('[SalesStatusDashboard] Rendering');
@@ -480,7 +481,7 @@ function SalesStatusDashboard() {
                                                             borderRadius: '8px',
                                                             cursor: 'pointer'
                                                         }}
-                                                        onClick={() => setSelectedPhoto(photo.photo_url)}
+                                                        onClick={() => setSelectedPhotoIndex(idx)}
                                                     />
                                                 ))}
                                             </div>
@@ -493,10 +494,27 @@ function SalesStatusDashboard() {
                 </div>
             )}
 
-            {/* 사진 확대 보기 오버레이 */}
-            {selectedPhoto && (
+            {/* 사진 확대 보기 오버레이 - 스와이프 갤러리 */}
+            {selectedPhotoIndex !== null && photos.length > 0 && (
                 <div
-                    onClick={() => setSelectedPhoto(null)}
+                    onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
+                    onTouchEnd={(e) => {
+                        if (!touchStart) return;
+                        const touchEnd = e.changedTouches[0].clientX;
+                        const diff = touchStart - touchEnd;
+
+                        // 50px 이상 스와이프 시 이동
+                        if (Math.abs(diff) > 50) {
+                            if (diff > 0 && selectedPhotoIndex < photos.length - 1) {
+                                // 왼쪽으로 스와이프 = 다음 사진
+                                setSelectedPhotoIndex(selectedPhotoIndex + 1);
+                            } else if (diff < 0 && selectedPhotoIndex > 0) {
+                                // 오른쪽으로 스와이프 = 이전 사진
+                                setSelectedPhotoIndex(selectedPhotoIndex - 1);
+                            }
+                        }
+                        setTouchStart(null);
+                    }}
                     style={{
                         position: 'fixed',
                         top: 0,
@@ -509,12 +527,13 @@ function SalesStatusDashboard() {
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '1rem'
+                        padding: '1rem',
+                        touchAction: 'pan-y'
                     }}
                 >
                     {/* 닫기 버튼 */}
                     <button
-                        onClick={() => setSelectedPhoto(null)}
+                        onClick={() => setSelectedPhotoIndex(null)}
                         style={{
                             position: 'absolute',
                             top: '1rem',
@@ -529,27 +548,140 @@ function SalesStatusDashboard() {
                             height: '44px',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            zIndex: 3001
                         }}
                     >✕</button>
 
+                    {/* 사진 인디케이터 */}
+                    <div style={{
+                        position: 'absolute',
+                        top: '1.5rem',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        color: 'white',
+                        fontSize: '1rem',
+                        fontWeight: 'bold',
+                        background: 'rgba(0,0,0,0.5)',
+                        padding: '0.5rem 1rem',
+                        borderRadius: '20px'
+                    }}>
+                        {selectedPhotoIndex + 1} / {photos.length}
+                    </div>
+
+                    {/* 이전 버튼 */}
+                    {selectedPhotoIndex > 0 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPhotoIndex(selectedPhotoIndex - 1);
+                            }}
+                            style={{
+                                position: 'absolute',
+                                left: '0.5rem',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'rgba(255,255,255,0.3)',
+                                border: 'none',
+                                color: 'white',
+                                fontSize: '2rem',
+                                cursor: 'pointer',
+                                borderRadius: '50%',
+                                width: '50px',
+                                height: '50px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >‹</button>
+                    )}
+
+                    {/* 다음 버튼 */}
+                    {selectedPhotoIndex < photos.length - 1 && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPhotoIndex(selectedPhotoIndex + 1);
+                            }}
+                            style={{
+                                position: 'absolute',
+                                right: '0.5rem',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                background: 'rgba(255,255,255,0.3)',
+                                border: 'none',
+                                color: 'white',
+                                fontSize: '2rem',
+                                cursor: 'pointer',
+                                borderRadius: '50%',
+                                width: '50px',
+                                height: '50px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}
+                        >›</button>
+                    )}
+
                     {/* 사진 */}
                     <img
-                        src={selectedPhoto}
-                        alt="확대 사진"
+                        src={photos[selectedPhotoIndex]?.photo_url}
+                        alt={`사진 ${selectedPhotoIndex + 1}`}
                         onClick={(e) => e.stopPropagation()}
                         style={{
-                            maxWidth: '95%',
-                            maxHeight: '85vh',
+                            maxWidth: '90%',
+                            maxHeight: '75vh',
                             objectFit: 'contain',
-                            borderRadius: '8px'
+                            borderRadius: '8px',
+                            userSelect: 'none',
+                            pointerEvents: 'none'
                         }}
                     />
 
                     {/* 안내 문구 */}
-                    <p style={{ color: '#999', marginTop: '1rem', fontSize: '0.85rem' }}>
-                        화면을 탭하여 닫기
+                    <p style={{ color: '#999', marginTop: '1rem', fontSize: '0.85rem', textAlign: 'center' }}>
+                        👆 좌우로 스와이프하여 사진 넘기기
                     </p>
+
+                    {/* 하단 썸네일 인디케이터 */}
+                    <div style={{
+                        display: 'flex',
+                        gap: '0.5rem',
+                        marginTop: '0.5rem',
+                        overflowX: 'auto',
+                        maxWidth: '90%',
+                        padding: '0.5rem'
+                    }}>
+                        {photos.map((photo, idx) => (
+                            <div
+                                key={idx}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedPhotoIndex(idx);
+                                }}
+                                style={{
+                                    width: '40px',
+                                    height: '40px',
+                                    borderRadius: '4px',
+                                    border: idx === selectedPhotoIndex ? '2px solid #3b82f6' : '2px solid transparent',
+                                    overflow: 'hidden',
+                                    flexShrink: 0,
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <img
+                                    src={photo.photo_url}
+                                    alt={`썸네일 ${idx + 1}`}
+                                    style={{
+                                        width: '100%',
+                                        height: '100%',
+                                        objectFit: 'cover',
+                                        opacity: idx === selectedPhotoIndex ? 1 : 0.5
+                                    }}
+                                />
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 

@@ -56,6 +56,9 @@ function SalesInOutRegisterPage() {
     const newEquipCameraRef = useRef(null);
     const newEquipAlbumRef = useRef(null);
 
+    // 연속 촬영 모드 상태
+    const [showContinuePrompt, setShowContinuePrompt] = useState(false);
+
     // 디버그 로그
     console.log('[SalesInOutRegisterPage] Render - activeMode:', activeMode);
 
@@ -314,15 +317,20 @@ function SalesInOutRegisterPage() {
     };
 
     // 사진 촬영/선택 핸들러
-    const handlePhotoCapture = async (e) => {
+    const handlePhotoCapture = async (e, isCamera = false) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
 
         try {
-            console.log('[handlePhotoCapture] Processing', files.length, 'files');
+            console.log('[handlePhotoCapture] Processing', files.length, 'files, isCamera:', isCamera);
             const base64Photos = await Promise.all(files.map(file => fileToBase64(file)));
             setPhotos(prev => [...prev, ...base64Photos]);
             setMessage(`📷 ${files.length}장 추가됨 (총 ${photos.length + files.length}장)`);
+
+            // 카메라로 촬영한 경우 연속 촬영 프롬프트 표시
+            if (isCamera && files.length === 1) {
+                setShowContinuePrompt(true);
+            }
         } catch (error) {
             console.error('[handlePhotoCapture] Error:', error);
             setMessage('❌ 사진 처리 실패');
@@ -808,11 +816,11 @@ function SalesInOutRegisterPage() {
                                 onClick={() => albumInputRef.current?.click()}
                                 style={{ flex: 1, padding: '0.75rem', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
                             >
-                                🖼️ 앨범
+                                🖼️ 앨범 (다중선택)
                             </button>
                         </div>
-                        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={handlePhotoCapture} style={{ display: 'none' }} multiple />
-                        <input ref={albumInputRef} type="file" accept="image/*" onChange={handlePhotoCapture} style={{ display: 'none' }} multiple />
+                        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={(e) => handlePhotoCapture(e, true)} style={{ display: 'none' }} />
+                        <input ref={albumInputRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/*" onChange={(e) => handlePhotoCapture(e, false)} style={{ display: 'none' }} multiple />
 
                         {photos.length > 0 && (
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -828,6 +836,72 @@ function SalesInOutRegisterPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* 연속 촬영 프롬프트 */}
+                    {showContinuePrompt && (
+                        <div style={{
+                            position: 'fixed',
+                            top: 0, left: 0, right: 0, bottom: 0,
+                            background: 'rgba(0,0,0,0.7)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 2000,
+                            padding: '1rem'
+                        }}>
+                            <div style={{
+                                background: 'white',
+                                borderRadius: '16px',
+                                padding: '1.5rem',
+                                width: '100%',
+                                maxWidth: '320px',
+                                textAlign: 'center'
+                            }}>
+                                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📷</div>
+                                <h3 style={{ margin: '0 0 0.5rem 0', color: '#1e293b' }}>
+                                    사진 {photos.length}장 추가됨
+                                </h3>
+                                <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.9rem' }}>
+                                    더 촬영하시겠습니까?
+                                </p>
+                                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <button
+                                        onClick={() => {
+                                            setShowContinuePrompt(false);
+                                            setTimeout(() => cameraInputRef.current?.click(), 100);
+                                        }}
+                                        style={{
+                                            flex: 1,
+                                            padding: '0.75rem',
+                                            background: '#3b82f6',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        📷 계속 촬영
+                                    </button>
+                                    <button
+                                        onClick={() => setShowContinuePrompt(false)}
+                                        style={{
+                                            flex: 1,
+                                            padding: '0.75rem',
+                                            background: '#10b981',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        ✅ 완료
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* 출고 버튼 */}
                     <button

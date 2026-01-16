@@ -93,3 +93,5 @@ cloudflared.exe
 *.db
 *.sqlite
 db.zip
+database/db_new.zip
+debug_ldisq.js
