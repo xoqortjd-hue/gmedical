@@ -120,8 +120,30 @@ function SalesStatusDashboard() {
                 count: items.length
             }));
 
-            // 기구 수 많은 순 정렬 (기존 방식 유지)
-            groupArray.sort((a, b) => b.count - a.count);
+            // 우선 표시 카테고리 정의 (순서대로 상단 배치)
+            const priorityOrder = [
+                'ZENIUS MIS',
+                'ZENIUS CEMENT SCREW',
+                'ZENIUS OPEN',
+                'ZENIUS MIS(서울)'
+            ];
+
+            // 정렬: 우선 카테고리 먼저, 나머지는 기구 수 많은 순
+            groupArray.sort((a, b) => {
+                const aIndex = priorityOrder.indexOf(a.baseName);
+                const bIndex = priorityOrder.indexOf(b.baseName);
+
+                // 둘 다 우선 카테고리인 경우 - 정의된 순서대로
+                if (aIndex !== -1 && bIndex !== -1) {
+                    return aIndex - bIndex;
+                }
+                // a만 우선 카테고리인 경우 - a가 먼저
+                if (aIndex !== -1) return -1;
+                // b만 우선 카테고리인 경우 - b가 먼저
+                if (bIndex !== -1) return 1;
+                // 둘 다 우선 카테고리가 아닌 경우 - 기구 수 많은 순
+                return b.count - a.count;
+            });
 
             setEquipmentGroups(groupArray);
             setLastUpdated(new Date());
