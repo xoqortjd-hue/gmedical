@@ -323,14 +323,24 @@ function SalesInOutRegisterPage() {
 
         try {
             console.log('[handlePhotoCapture] Processing', files.length, 'files, isCamera:', isCamera);
-            const base64Photos = await Promise.all(files.map(file => fileToBase64(file)));
-            setPhotos(prev => [...prev, ...base64Photos]);
-            setMessage(`📷 ${files.length}장 추가됨 (총 ${photos.length + files.length}장)`);
 
-            // 카메라로 촬영한 경우 연속 촬영 프롬프트 표시
-            if (isCamera && files.length === 1) {
-                setShowContinuePrompt(true);
+            // 여러 파일 처리 중 진행 상태 표시
+            setMessage(`⏳ 사진 처리 중... (0/${files.length})`);
+
+            const base64Photos = [];
+            for (let i = 0; i < files.length; i++) {
+                setMessage(`⏳ 사진 처리 중... (${i + 1}/${files.length})`);
+                const base64 = await fileToBase64(files[i]);
+                base64Photos.push(base64);
             }
+
+            // 항상 기존 사진에 추가 (카메라, 앨범 모두)
+            setPhotos(prev => [...prev, ...base64Photos]);
+            const totalCount = photos.length + base64Photos.length;
+            setMessage(`📷 ${files.length}장 추가됨 (총 ${totalCount}장)`);
+
+            // 카메라/앨범 모두 연속 추가 프롬프트 표시
+            setShowContinuePrompt(true);
         } catch (error) {
             console.error('[handlePhotoCapture] Error:', error);
             setMessage('❌ 사진 처리 실패');
@@ -403,9 +413,10 @@ function SalesInOutRegisterPage() {
                 notes: `출고 처리 - ${new Date().toLocaleString('ko-KR')}`
             });
 
-            // 사진 업로드
+            // 사진 업로드 (진행 상태 표시)
             console.log('[handleOutbound] Uploading', photos.length, 'photos');
             for (let i = 0; i < photos.length; i++) {
+                setMessage(`⏳ 사진 업로드 중... (${i + 1}/${photos.length})`);
                 await axios.put(`/api/lending/items/${selectedItem.id}/photo`, {
                     photo_url: photos[i],
                     uploaded_by: movedBy
@@ -862,31 +873,51 @@ function SalesInOutRegisterPage() {
                                     사진 {photos.length}장 추가됨
                                 </h3>
                                 <p style={{ color: '#64748b', marginBottom: '1rem', fontSize: '0.9rem' }}>
-                                    더 촬영하시겠습니까?
+                                    더 추가하시겠습니까?
                                 </p>
-                                <div style={{ display: 'flex', gap: '0.75rem' }}>
-                                    <button
-                                        onClick={() => {
-                                            setShowContinuePrompt(false);
-                                            setTimeout(() => cameraInputRef.current?.click(), 100);
-                                        }}
-                                        style={{
-                                            flex: 1,
-                                            padding: '0.75rem',
-                                            background: '#3b82f6',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '8px',
-                                            fontWeight: 'bold',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        📷 계속 촬영
-                                    </button>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                        <button
+                                            onClick={() => {
+                                                setShowContinuePrompt(false);
+                                                setTimeout(() => cameraInputRef.current?.click(), 100);
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.75rem',
+                                                background: '#3b82f6',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            📷 촬영
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setShowContinuePrompt(false);
+                                                setTimeout(() => albumInputRef.current?.click(), 100);
+                                            }}
+                                            style={{
+                                                flex: 1,
+                                                padding: '0.75rem',
+                                                background: '#8b5cf6',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                fontWeight: 'bold',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            🖼️ 앨범
+                                        </button>
+                                    </div>
                                     <button
                                         onClick={() => setShowContinuePrompt(false)}
                                         style={{
-                                            flex: 1,
+                                            width: '100%',
                                             padding: '0.75rem',
                                             background: '#10b981',
                                             color: 'white',
