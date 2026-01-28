@@ -56,6 +56,24 @@ function SalesStatusDashboard() {
                 item.category !== 'BIOLOGIC' && item.category !== 'biologic'
             );
 
+            // 기구명 변경 (한글 -> 영문 변환 등)
+            filtered.forEach(item => {
+                if (!item.product_name) return;
+
+                // 1. 괄호 안 부위명 영문 변환
+                item.product_name = item.product_name
+                    .replace('(휴머러스)', '(HUMERUS)')
+                    .replace('(라디우스)', '(RADIUS)')
+                    .replace('(크래비클)', '(CLAVICLE)')
+                    .replace('(피블라)', '(FIBULAR)')
+                    .replace('(티비아)', '(TIBIA)');
+
+                // 2. 특정 제품명 변경
+                if (item.product_name.includes('보아즈 extlif 3D cage')) {
+                    item.product_name = item.product_name.replace('보아즈 extlif 3D cage', '엔도비젼 3D cage');
+                }
+            });
+
             // 1단계: 각 기구명당 최신 이력만 선택 (중복 제거)
             const latestByName = {};
 
@@ -132,8 +150,10 @@ function SalesStatusDashboard() {
                 'C7',
                 'UNICON',
                 '바게라',
+                'INTRASPINE',
                 '포세이돈',
-                'ZENIUS MIS(서울)'
+                'ZENIUS MIS(서울)',
+                'ZENIUS CEMENT SCREW#3(서울)'
             ];
 
             // 우선순위 인덱스 반환 함수
