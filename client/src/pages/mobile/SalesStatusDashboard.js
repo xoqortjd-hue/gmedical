@@ -125,23 +125,47 @@ function SalesStatusDashboard() {
                 'ZENIUS MIS',
                 'ZENIUS CEMENT SCREW',
                 'ZENIUS OPEN',
+                'ILIAD',
+                'OLIF',
+                'Lp',            // Lp케이지셋트 등
+                '아테나',
+                'C7',
+                'UNICON',
+                '바게라',
+                '포세이돈',
                 'ZENIUS MIS(서울)'
             ];
 
+            // 우선순위 인덱스 반환 함수
+            const getPriorityIndex = (baseName) => {
+                // 정확히 일치하는 경우
+                const exactIndex = priorityOrder.indexOf(baseName);
+                if (exactIndex !== -1) return exactIndex;
+
+                // 키워드 포함 확인
+                const lowerName = baseName.toLowerCase();
+                const keywordIndex = priorityOrder.findIndex(keyword =>
+                    lowerName.includes(keyword.toLowerCase())
+                );
+
+                return keywordIndex !== -1 ? keywordIndex : 999;
+            };
+
             // 정렬: 우선 카테고리 먼저, 나머지는 기구 수 많은 순
             groupArray.sort((a, b) => {
-                const aIndex = priorityOrder.indexOf(a.baseName);
-                const bIndex = priorityOrder.indexOf(b.baseName);
+                const indexA = getPriorityIndex(a.baseName);
+                const indexB = getPriorityIndex(b.baseName);
 
-                // 둘 다 우선 카테고리인 경우 - 정의된 순서대로
-                if (aIndex !== -1 && bIndex !== -1) {
-                    return aIndex - bIndex;
+                // 둘 다 우선순위 목록에 있는 경우
+                if (indexA !== 999 && indexB !== 999) {
+                    return indexA - indexB;
                 }
-                // a만 우선 카테고리인 경우 - a가 먼저
-                if (aIndex !== -1) return -1;
-                // b만 우선 카테고리인 경우 - b가 먼저
-                if (bIndex !== -1) return 1;
-                // 둘 다 우선 카테고리가 아닌 경우 - 기구 수 많은 순
+
+                // 하나만 있는 경우
+                if (indexA !== 999) return -1;
+                if (indexB !== 999) return 1;
+
+                // 둘 다 없는 경우 - 기구 수 많은 순
                 return b.count - a.count;
             });
 

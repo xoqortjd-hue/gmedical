@@ -1564,7 +1564,38 @@ router.get('/report/sales-status', (req, res) => {
             });
         });
 
-        // 배열로 변환하고 장비 수 기준으로 정렬
+        // 우선순위 목록 정의 (사용자 요청 기반)
+        const PRIORITY_ORDER = [
+            'ZENIUS MIS',
+            'ZENIUS CEMENT SCREW',
+            'ZENIUS OPEN',
+            'ILIAD',
+            'OLIF',          // OLIF기구, OLIF 등 포함
+            'Lp',            // Lp케이지셋트, LP케이지세트 등 포함
+            '아테나',         // Athena
+            'C7',
+            'UNICON',
+            '바게라',         // Baghera
+            '포세이돈',       // Poseidon
+            'ZENIUS MIS(서울)'
+        ];
+
+        // 우선순위 인덱스 반환 함수 (낮을수록 우선순위 높음)
+        const getPriorityIndex = (baseName) => {
+            // 정확히 일치하는 경우 우선 확인
+            const exactIndex = PRIORITY_ORDER.indexOf(baseName);
+            if (exactIndex !== -1) return exactIndex;
+
+            // 키워드 포함 여부 확인 (대소문자 무시)
+            const lowerName = baseName.toLowerCase();
+            const keywordIndex = PRIORITY_ORDER.findIndex(keyword =>
+                lowerName.includes(keyword.toLowerCase())
+            );
+
+            return keywordIndex !== -1 ? keywordIndex : 999; // 없으면 999
+        };
+
+        // 배열로 변환하고 정렬 적용
         const groups = Object.entries(groupedByName)
             .map(([baseName, items]) => ({
                 baseName,
@@ -1572,7 +1603,22 @@ router.get('/report/sales-status', (req, res) => {
                 inboundCount: items.filter(i => i.status === 'inbound').length,
                 outboundCount: items.filter(i => i.status === 'outbound').length
             }))
-            .sort((a, b) => b.items.length - a.items.length);
+            .sort((a, b) => {
+                const indexA = getPriorityIndex(a.baseName);
+                const indexB = getPriorityIndex(b.baseName);
+
+                // 둘 다 우선순위 목록에 있는 경우 순서대로 정렬
+                if (indexA !== 999 && indexB !== 999) {
+                    return indexA - indexB;
+                }
+
+                // 하나만 있는 경우 우선순위 있는 쪽이 위로
+                if (indexA !== 999) return -1;
+                if (indexB !== 999) return 1;
+
+                // 둘 다 없는 경우: 수량 순 정렬 (기존 로직)
+                return b.items.length - a.items.length;
+            });
 
         res.json({
             groups,
