@@ -120,6 +120,24 @@ function SalesInOutRegisterPage() {
             item.category !== 'BIOLOGIC' && item.category !== 'biologic'
         );
 
+        // 기구명 변경 (한글 -> 영문 변환 등) - 대시보드와 동일한 로직 적용
+        equipmentOnly.forEach(item => {
+            if (!item.product_name) return;
+
+            // 1. 괄호 안 부위명 영문 변환
+            item.product_name = item.product_name
+                .replace('(휴머러스)', '(HUMERUS)')
+                .replace('(라디우스)', '(RADIUS)')
+                .replace('(크래비클)', '(CLAVICLE)')
+                .replace('(피블라)', '(FIBULAR)')
+                .replace('(티비아)', '(TIBIA)');
+
+            // 2. 특정 제품명 변경
+            if (item.product_name.includes('보아즈 extlif 3D cage')) {
+                item.product_name = item.product_name.replace('보아즈 extlif 3D cage', '엔도비젼 3D cage');
+            }
+        });
+
         // 중복 제거: 기구명 기준 최신 이력만 선택
         const latestByName = {};
         equipmentOnly.forEach(item => {
@@ -220,13 +238,39 @@ function SalesInOutRegisterPage() {
                 number
             });
         });
-        // 우선 표시 카테고리 정의 (순서대로 상단 배치) - 입출고현황판과 동일
+
+        // 우선 표시 카테고리 정의 (순서대로 상단 배치) - 대시보드와 동일하게 유지
         const priorityOrder = [
             'ZENIUS MIS',
             'ZENIUS CEMENT SCREW',
             'ZENIUS OPEN',
-            'ZENIUS MIS(서울)'
+            'ILIAD',
+            'OLIF',
+            'Lp',            // Lp케이지셋트 등
+            '아테나',
+            'C7',
+            'UNICON',
+            '바게라',
+            'INTRASPINE',
+            '포세이돈',
+            'ZENIUS MIS(서울)',
+            'ZENIUS CEMENT SCREW#3(서울)'
         ];
+
+        // 우선순위 인덱스 반환 함수
+        const getPriorityIndex = (baseName) => {
+            // 정확히 일치하는 경우
+            const exactIndex = priorityOrder.indexOf(baseName);
+            if (exactIndex !== -1) return exactIndex;
+
+            // 키워드 포함 확인
+            const lowerName = baseName.toLowerCase();
+            const keywordIndex = priorityOrder.findIndex(keyword =>
+                lowerName.includes(keyword.toLowerCase())
+            );
+
+            return keywordIndex !== -1 ? keywordIndex : 999;
+        };
 
         // 배열로 변환
         const groupArray = Object.entries(grouped)
@@ -242,18 +286,19 @@ function SalesInOutRegisterPage() {
 
         // 정렬: 우선 카테고리 먼저, 나머지는 기구 수 많은 순
         groupArray.sort((a, b) => {
-            const aIndex = priorityOrder.indexOf(a.baseName);
-            const bIndex = priorityOrder.indexOf(b.baseName);
+            const indexA = getPriorityIndex(a.baseName);
+            const indexB = getPriorityIndex(b.baseName);
 
-            // 둘 다 우선 카테고리인 경우 - 정의된 순서대로
-            if (aIndex !== -1 && bIndex !== -1) {
-                return aIndex - bIndex;
+            // 둘 다 우선순위 목록에 있는 경우
+            if (indexA !== 999 && indexB !== 999) {
+                return indexA - indexB;
             }
-            // a만 우선 카테고리인 경우 - a가 먼저
-            if (aIndex !== -1) return -1;
-            // b만 우선 카테고리인 경우 - b가 먼저
-            if (bIndex !== -1) return 1;
-            // 둘 다 우선 카테고리가 아닌 경우 - 기구 수 많은 순
+
+            // 하나만 있는 경우
+            if (indexA !== 999) return -1;
+            if (indexB !== 999) return 1;
+
+            // 둘 다 없는 경우 - 기구 수 많은 순
             return b.count - a.count;
         });
 
