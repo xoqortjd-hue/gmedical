@@ -105,9 +105,63 @@ function ReportPage() {
     const [salesStatusData, setSalesStatusData] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    // 제외할 병원 ID 목록 (체크 해제된 항목)
+    const [excludedHospitals, setExcludedHospitals] = useState(() => {
+        // 로컬스토리지에서 저장된 설정 불러오기
+        const saved = localStorage.getItem('reportExcludedHospitals');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    // 필터 모드: true = 제외 적용, false = 전체 보기
+    const [filterEnabled, setFilterEnabled] = useState(true);
+
     useEffect(() => {
         fetchReportData();
     }, [period]);
+
+    // 제외 설정 변경 시 로컬스토리지에 저장
+    useEffect(() => {
+        localStorage.setItem('reportExcludedHospitals', JSON.stringify(excludedHospitals));
+    }, [excludedHospitals]);
+
+    // 병원 제외/포함 토글
+    const toggleHospitalExclusion = (hospitalId) => {
+        setExcludedHospitals(prev => {
+            if (prev.includes(hospitalId)) {
+                return prev.filter(id => id !== hospitalId);
+            } else {
+                return [...prev, hospitalId];
+            }
+        });
+    };
+
+    // 전체 선택
+    const selectAllHospitals = () => {
+        setExcludedHospitals([]);
+    };
+
+    // 전체 해제
+    const deselectAllHospitals = () => {
+        if (transactionData && transactionData.hospitals) {
+            setExcludedHospitals(transactionData.hospitals.map(h => h.hospital_id));
+        }
+    };
+
+    // 필터링된 병원 목록 (제외된 항목 제거)
+    const getFilteredHospitals = () => {
+        if (!transactionData || !transactionData.hospitals) return [];
+        if (!filterEnabled) return transactionData.hospitals;
+        return transactionData.hospitals.filter(h => !excludedHospitals.includes(h.hospital_id));
+    };
+
+    // 필터링된 합계 계산
+    const getFilteredTotals = () => {
+        const filtered = getFilteredHospitals();
+        return {
+            hospital_count: filtered.length,
+            total_surgeries: filtered.reduce((sum, h) => sum + (h.surgery_count || 0), 0)
+        };
+    };
 
     const fetchReportData = async () => {
         setLoading(true);
@@ -130,23 +184,27 @@ function ReportPage() {
     const handlePrint = () => {
         const printWindow = window.open('', '_blank');
 
+        // 필터링된 병원 목록과 합계 사용
+        const filteredHospitals = getFilteredHospitals();
+        const filteredTotals = getFilteredTotals();
+
         // 업체/병원 이행 완료건수 테이블 HTML 생성
         let hospitalTableHtml = '';
-        if (transactionData && transactionData.hospitals.length > 0) {
+        if (filteredHospitals.length > 0) {
             hospitalTableHtml = `
                 <table>
                     <thead>
                         <tr><th>업체/병원명</th><th>이행완료건수</th></tr>
                     </thead>
                     <tbody>
-                        ${transactionData.hospitals.map(h => `
+                        ${filteredHospitals.map(h => `
                             <tr><td>${h.hospital_name}</td><td style="text-align:center;color:#6366f1;font-weight:bold;">${h.surgery_count || 0}건</td></tr>
                         `).join('')}
                     </tbody>
                     <tfoot>
                         <tr style="background:#f8f9fa;">
-                            <td><strong>합계 (${transactionData.totals.hospital_count}개 업체/병원)</strong></td>
-                            <td style="text-align:center;color:#6366f1;font-weight:bold;">${transactionData.totals.total_surgeries}건</td>
+                            <td><strong>합계 (${filteredTotals.hospital_count}개 업체/병원)</strong></td>
+                            <td style="text-align:center;color:#6366f1;font-weight:bold;">${filteredTotals.total_surgeries}건</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -348,30 +406,108 @@ function ReportPage() {
                     {/* 업체/병원 이행 완료건수 */}
                     <div className="report-card">
                         <h2>🏥 업체/병원 이행 완료건수</h2>
+
+                        {/* 필터 컨트롤 */}
+                        {transactionData && transactionData.hospitals.length > 0 && (
+                            <div className="no-print" style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.75rem 1rem',
+                                backgroundColor: '#f8fafc',
+                                borderBottom: '1px solid #e2e8f0',
+                                flexWrap: 'wrap'
+                            }}>
+                                <span style={{ fontSize: '0.9rem', color: '#64748b', marginRight: '0.5rem' }}>
+                                    📋 인쇄 항목 선택:
+                                </span>
+                                <button
+                                    onClick={selectAllHospitals}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                                >
+                                    전체 선택
+                                </button>
+                                <button
+                                    onClick={deselectAllHospitals}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                                >
+                                    전체 해제
+                                </button>
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    marginLeft: 'auto',
+                                    fontSize: '0.85rem',
+                                    color: '#475569',
+                                    cursor: 'pointer'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={filterEnabled}
+                                        onChange={(e) => setFilterEnabled(e.target.checked)}
+                                        style={{ width: '16px', height: '16px' }}
+                                    />
+                                    제외 필터 적용
+                                </label>
+                                {excludedHospitals.length > 0 && (
+                                    <span style={{
+                                        fontSize: '0.8rem',
+                                        color: '#ef4444',
+                                        backgroundColor: '#fef2f2',
+                                        padding: '0.2rem 0.5rem',
+                                        borderRadius: '4px'
+                                    }}>
+                                        {excludedHospitals.length}개 제외됨
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
                         {transactionData && transactionData.hospitals.length > 0 ? (
                             <div className="table-container">
                                 <table className="data-table">
                                     <thead>
                                         <tr>
+                                            <th className="no-print" style={{ width: '50px', textAlign: 'center' }}>선택</th>
                                             <th>업체/병원명</th>
                                             <th style={{ textAlign: 'center' }}>이행완료건수</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {transactionData.hospitals.map(hospital => (
-                                            <tr key={hospital.hospital_id}>
-                                                <td><strong>{hospital.hospital_name}</strong></td>
-                                                <td style={{ textAlign: 'center', color: '#6366f1', fontWeight: 'bold' }}>
-                                                    {hospital.surgery_count || 0}건
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {transactionData.hospitals.map(hospital => {
+                                            const isExcluded = excludedHospitals.includes(hospital.hospital_id);
+                                            // 필터 적용 시 제외된 항목은 표시하지 않음
+                                            if (filterEnabled && isExcluded) return null;
+                                            return (
+                                                <tr
+                                                    key={hospital.hospital_id}
+                                                    style={isExcluded ? { opacity: 0.5, backgroundColor: '#f8f8f8' } : {}}
+                                                >
+                                                    <td className="no-print" style={{ textAlign: 'center' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!isExcluded}
+                                                            onChange={() => toggleHospitalExclusion(hospital.hospital_id)}
+                                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                                        />
+                                                    </td>
+                                                    <td><strong>{hospital.hospital_name}</strong></td>
+                                                    <td style={{ textAlign: 'center', color: '#6366f1', fontWeight: 'bold' }}>
+                                                        {hospital.surgery_count || 0}건
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                     <tfoot>
                                         <tr style={{ backgroundColor: '#f8f9fa' }}>
-                                            <td><strong>합계 ({transactionData.totals.hospital_count}개 업체/병원)</strong></td>
+                                            <td className="no-print"></td>
+                                            <td><strong>합계 ({getFilteredTotals().hospital_count}개 업체/병원)</strong></td>
                                             <td style={{ textAlign: 'center', color: '#6366f1', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                                                {transactionData.totals.total_surgeries}건
+                                                {getFilteredTotals().total_surgeries}건
                                             </td>
                                         </tr>
                                     </tfoot>
