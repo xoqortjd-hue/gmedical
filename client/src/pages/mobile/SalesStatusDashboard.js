@@ -150,10 +150,19 @@ function SalesStatusDashboard() {
                 'C7',
                 'UNICON',
                 '바게라',
+                '지니어스리무버',
+                'LUMBAR RETRACTOR',
+                'MEDYSSEY HOOK',
+                '엔도비젼 3D cage',
+                'FELIX CAGE',
+                'Ace ti cage',
+                'U&I peek cage',
+                'Dynamic cage',
                 'INTRASPINE',
                 '포세이돈',
                 'ZENIUS MIS(서울)',
-                'ZENIUS CEMENT SCREW#3(서울)'
+                'ZENIUS CEMENT SCREW#3(서울)',
+                'LP케이지세트(서울)'
             ];
 
             // 우선순위 인덱스 반환 함수

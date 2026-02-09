@@ -34,8 +34,9 @@ function SalesInOutRegisterPage() {
     const [message, setMessage] = useState('');
     const [processing, setProcessing] = useState(false);
 
-    // 출고 폼 상태
-    const [selectedItem, setSelectedItem] = useState(null);
+    // 출고 폼 상태 - 다중 선택 지원
+    const [selectedItems, setSelectedItems] = useState([]); // 다중 선택 배열
+    const [showOutboundForm, setShowOutboundForm] = useState(false); // 출고 폼 표시 여부
     const [hospitals, setHospitals] = useState([]);
     const [personnelList, setPersonnelList] = useState([]);
     const [selectedHospital, setSelectedHospital] = useState('');
@@ -251,10 +252,19 @@ function SalesInOutRegisterPage() {
             'C7',
             'UNICON',
             '바게라',
+            '지니어스리무버',
+            'LUMBAR RETRACTOR',
+            'MEDYSSEY HOOK',
+            '엔도비젼 3D cage',
+            'FELIX CAGE',
+            'Ace ti cage',
+            'U&I peek cage',
+            'Dynamic cage',
             'INTRASPINE',
             '포세이돈',
             'ZENIUS MIS(서울)',
-            'ZENIUS CEMENT SCREW#3(서울)'
+            'ZENIUS CEMENT SCREW#3(서울)',
+            'LP케이지세트(서울)'
         ];
 
         // 우선순위 인덱스 반환 함수
@@ -366,15 +376,46 @@ function SalesInOutRegisterPage() {
         }
     };
 
-    // 출고 아이템 선택
+    // 출고 아이템 선택 (다중 선택 토글)
     const handleSelectForOutbound = (item) => {
-        console.log('[handleSelectForOutbound] Selected:', item.product_name);
-        setSelectedItem(item);
+        console.log('[handleSelectForOutbound] Toggling:', item.product_name);
+        setSelectedItems(prev => {
+            const isAlreadySelected = prev.some(i => i.id === item.id);
+            if (isAlreadySelected) {
+                // 이미 선택됨 → 제거
+                return prev.filter(i => i.id !== item.id);
+            } else {
+                // 새로 선택 → 추가
+                return [...prev, item];
+            }
+        });
+    };
+
+    // 선택된 장비 개별 제거
+    const handleRemoveSelectedItem = (itemId) => {
+        setSelectedItems(prev => prev.filter(i => i.id !== itemId));
+    };
+
+    // 출고 폼 열기
+    const openOutboundForm = () => {
+        if (selectedItems.length === 0) {
+            setMessage('❌ 출고할 장비를 선택해주세요');
+            return;
+        }
+        setShowOutboundForm(true);
         setSelectedHospital('');
         setNewHospitalName('');
         setSelectedPersonnel('');
         setNewPersonnelName('');
         setPhotos([]);
+    };
+
+    // 출고 폼 닫기 및 초기화
+    const closeOutboundForm = () => {
+        setShowOutboundForm(false);
+        setSelectedItems([]);
+        setPhotos([]);
+        setMessage('');
     };
 
     // 파일을 Base64로 변환
@@ -424,9 +465,9 @@ function SalesInOutRegisterPage() {
         setPhotos(prev => prev.filter((_, i) => i !== index));
     };
 
-    // 출고 처리
+    // 출고 처리 (다중 장비 일괄 처리)
     const handleOutbound = async () => {
-        if (!selectedItem) {
+        if (selectedItems.length === 0) {
             setMessage('❌ 기구를 선택해주세요');
             return;
         }
@@ -440,7 +481,7 @@ function SalesInOutRegisterPage() {
         }
 
         setProcessing(true);
-        setMessage('⏳ 출고 처리 중...');
+        setMessage(`⏳ ${selectedItems.length}개 장비 출고 처리 중...`);
 
         try {
             let hospitalId = selectedHospital;
@@ -475,38 +516,60 @@ function SalesInOutRegisterPage() {
                 setPersonnelList(prev => [...prev, newPersonnelName.trim()]);
             }
 
-            // 이동 API 호출
-            console.log('[handleOutbound] Moving item:', selectedItem.id, 'to hospital:', hospitalId);
-            await axios.post('/api/lending/move', {
-                lending_item_id: selectedItem.id,
-                to_hospital_id: hospitalId,
-                moved_by: movedBy,
-                notes: `출고 처리 - ${new Date().toLocaleString('ko-KR')}`
-            });
-
-            // 사진 업로드 (진행 상태 표시)
-            console.log('[handleOutbound] Uploading', photos.length, 'photos');
-            for (let i = 0; i < photos.length; i++) {
-                setMessage(`⏳ 사진 업로드 중... (${i + 1}/${photos.length})`);
-                await axios.put(`/api/lending/items/${selectedItem.id}/photo`, {
-                    photo_url: photos[i],
-                    uploaded_by: movedBy
-                });
-            }
-
             const hospitalName = newHospitalName.trim() ||
                 hospitals.find(h => h.id.toString() === hospitalId.toString())?.name || '병원';
 
-            setMessage(`✅ ${selectedItem.product_name} → ${hospitalName} 출고 완료!`);
-            console.log('[handleOutbound] Success');
+            // 각 장비에 대해 일괄 처리
+            const totalItems = selectedItems.length;
+            const successItems = [];
+            const failedItems = [];
+
+            for (let i = 0; i < totalItems; i++) {
+                const item = selectedItems[i];
+                setMessage(`⏳ 출고 처리 중... (${i + 1}/${totalItems}) - ${item.product_name}`);
+
+                try {
+                    // 이동 API 호출
+                    console.log('[handleOutbound] Moving item:', item.id, 'to hospital:', hospitalId);
+                    await axios.post('/api/lending/move', {
+                        lending_item_id: item.id,
+                        to_hospital_id: hospitalId,
+                        moved_by: movedBy,
+                        notes: `출고 처리 - ${new Date().toLocaleString('ko-KR')}`
+                    });
+
+                    // 사진 업로드 (모든 장비에 동일한 사진 적용)
+                    console.log('[handleOutbound] Uploading', photos.length, 'photos for item:', item.id);
+                    for (let j = 0; j < photos.length; j++) {
+                        await axios.put(`/api/lending/items/${item.id}/photo`, {
+                            photo_url: photos[j],
+                            uploaded_by: movedBy
+                        });
+                    }
+
+                    successItems.push(item.product_name);
+                } catch (itemError) {
+                    console.error('[handleOutbound] Error for item:', item.id, itemError);
+                    failedItems.push(item.product_name);
+                }
+            }
+
+            // 결과 메시지
+            if (failedItems.length === 0) {
+                setMessage(`✅ ${successItems.length}개 장비 → ${hospitalName} 출고 완료!`);
+            } else {
+                setMessage(`⚠️ 완료: ${successItems.length}개, 실패: ${failedItems.length}개 (${failedItems.join(', ')})`);
+            }
+            console.log('[handleOutbound] Success:', successItems.length, 'Failed:', failedItems.length);
 
             // 폼 초기화 및 목록 새로고침
             setTimeout(() => {
-                setSelectedItem(null);
+                setShowOutboundForm(false);
+                setSelectedItems([]);
                 setPhotos([]);
                 fetchInboundItems();
                 setMessage('');
-            }, 1500);
+            }, 2000);
 
         } catch (error) {
             console.error('[handleOutbound] Error:', error);
@@ -628,7 +691,8 @@ function SalesInOutRegisterPage() {
                     value={activeMode}
                     onChange={(e) => {
                         setActiveMode(e.target.value);
-                        setSelectedItem(null);
+                        setSelectedItems([]);
+                        setShowOutboundForm(false);
                         setPhotos([]);
                         setMessage('');
                     }}
@@ -741,10 +805,76 @@ function SalesInOutRegisterPage() {
                 </div>
             )}
 
-            {/* 출고 처리 - 3열 그리드 */}
-            {activeMode === 'outbound' && !selectedItem && (
+            {/* 출고 처리 - 다중 선택 3열 그리드 */}
+            {activeMode === 'outbound' && !showOutboundForm && (
                 <div>
                     <h3 style={{ marginBottom: '1rem', color: '#1e293b' }}>📤 입고 목록 (출고 처리 대상)</h3>
+
+                    {/* 선택된 장비 목록 표시 */}
+                    {selectedItems.length > 0 && (
+                        <div style={{
+                            background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+                            borderRadius: '12px',
+                            padding: '1rem',
+                            marginBottom: '1rem',
+                            border: '2px solid #f59e0b'
+                        }}>
+                            <div style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '0.5rem' }}>
+                                ✅ 선택된 장비 ({selectedItems.length}개)
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                                {selectedItems.map(item => (
+                                    <div key={item.id} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.25rem',
+                                        background: 'white',
+                                        padding: '0.25rem 0.5rem',
+                                        borderRadius: '16px',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '500',
+                                        color: '#1e293b',
+                                        border: '1px solid #d97706'
+                                    }}>
+                                        <span>{item.product_name}</span>
+                                        <button
+                                            onClick={() => handleRemoveSelectedItem(item.id)}
+                                            style={{
+                                                background: '#ef4444',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '50%',
+                                                width: '18px',
+                                                height: '18px',
+                                                fontSize: '0.7rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center'
+                                            }}
+                                        >✕</button>
+                                    </div>
+                                ))}
+                            </div>
+                            <button
+                                onClick={openOutboundForm}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.75rem',
+                                    background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '1rem',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                📤 선택한 {selectedItems.length}개 장비 출고 정보 입력
+                            </button>
+                        </div>
+                    )}
+
                     {loading ? (
                         <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>로딩 중...</div>
                     ) : items.length === 0 ? (
@@ -775,48 +905,54 @@ function SalesInOutRegisterPage() {
                                             gap: '0.5rem',
                                             marginBottom: rowIndex < chunkArray(group.items, 3).length - 1 ? '0.5rem' : 0
                                         }}>
-                                            {row.map((item, colIndex) => (
-                                                <div key={colIndex} style={{
-                                                    padding: '0.5rem',
-                                                    borderRadius: '8px',
-                                                    background: item ? '#f8fafc' : 'transparent',
-                                                    border: item ? '1px solid #e2e8f0' : 'none',
-                                                    minHeight: '60px',
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center'
-                                                }}>
-                                                    {item && (
-                                                        <>
-                                                            <div style={{
-                                                                fontSize: '0.8rem',
-                                                                fontWeight: 'bold',
-                                                                color: '#374151',
-                                                                marginBottom: '0.25rem',
-                                                                textAlign: 'center'
-                                                            }}>
-                                                                {item.product_name}
-                                                            </div>
-                                                            <button
-                                                                onClick={() => handleSelectForOutbound(item)}
-                                                                style={{
-                                                                    padding: '0.2rem 0.6rem',
-                                                                    background: '#ef4444',
-                                                                    color: 'white',
-                                                                    borderRadius: '4px',
-                                                                    fontSize: '0.7rem',
+                                            {row.map((item, colIndex) => {
+                                                const isSelected = item && selectedItems.some(i => i.id === item.id);
+                                                return (
+                                                    <div key={colIndex} style={{
+                                                        padding: '0.5rem',
+                                                        borderRadius: '8px',
+                                                        background: item ? (isSelected ? '#fef3c7' : '#f8fafc') : 'transparent',
+                                                        border: item ? (isSelected ? '2px solid #f59e0b' : '1px solid #e2e8f0') : 'none',
+                                                        minHeight: '60px',
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        cursor: item ? 'pointer' : 'default',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onClick={() => item && handleSelectForOutbound(item)}
+                                                    >
+                                                        {item && (
+                                                            <>
+                                                                {isSelected && (
+                                                                    <div style={{
+                                                                        fontSize: '0.9rem',
+                                                                        marginBottom: '0.15rem'
+                                                                    }}>✅</div>
+                                                                )}
+                                                                <div style={{
+                                                                    fontSize: '0.8rem',
                                                                     fontWeight: 'bold',
-                                                                    border: 'none',
-                                                                    cursor: 'pointer'
-                                                                }}
-                                                            >
-                                                                출고
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            ))}
+                                                                    color: isSelected ? '#92400e' : '#374151',
+                                                                    textAlign: 'center'
+                                                                }}>
+                                                                    {item.product_name}
+                                                                </div>
+                                                                {!isSelected && (
+                                                                    <div style={{
+                                                                        fontSize: '0.65rem',
+                                                                        color: '#94a3b8',
+                                                                        marginTop: '0.15rem'
+                                                                    }}>
+                                                                        탭하여 선택
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     ))}
                                 </div>
@@ -826,16 +962,33 @@ function SalesInOutRegisterPage() {
                 </div>
             )}
 
-            {/* 출고 폼 */}
-            {activeMode === 'outbound' && selectedItem && (
+            {/* 출고 폼 - 다중 장비 일괄 입력 */}
+            {activeMode === 'outbound' && showOutboundForm && (
                 <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                         <h3 style={{ margin: 0, color: '#1e293b' }}>📤 출고 정보 입력</h3>
-                        <button onClick={() => setSelectedItem(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+                        <button onClick={closeOutboundForm} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
                     </div>
 
+                    {/* 선택된 장비 목록 표시 */}
                     <div style={{ padding: '1rem', background: '#f1f5f9', borderRadius: '8px', marginBottom: '1rem' }}>
-                        <strong style={{ color: '#1e293b' }}>{selectedItem.product_name}</strong>
+                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '0.5rem' }}>
+                            선택된 장비 ({selectedItems.length}개)
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            {selectedItems.map(item => (
+                                <span key={item.id} style={{
+                                    background: '#e0f2fe',
+                                    color: '#0369a1',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '4px',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500'
+                                }}>
+                                    {item.product_name}
+                                </span>
+                            ))}
+                        </div>
                     </div>
 
                     {/* 병원 선택 */}
@@ -1021,7 +1174,7 @@ function SalesInOutRegisterPage() {
                             cursor: processing ? 'not-allowed' : 'pointer'
                         }}
                     >
-                        {processing ? '처리 중...' : '📤 출고 등록'}
+                        {processing ? '처리 중...' : `📤 ${selectedItems.length}개 장비 일괄 출고`}
                     </button>
                 </div>
             )}
