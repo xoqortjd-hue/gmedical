@@ -538,8 +538,16 @@ function SalesInOutRegisterPage() {
                         notes: `출고 처리 - ${new Date().toLocaleString('ko-KR')}`
                     });
 
-                    // 사진 업로드 (모든 장비에 동일한 사진 적용)
-                    console.log('[handleOutbound] Uploading', photos.length, 'photos for item:', item.id);
+                    // 기존 사진 삭제 후 새 사진 업로드
+                    console.log('[handleOutbound] Deleting existing photos for item:', item.id);
+                    try {
+                        await axios.delete(`/api/lending/items/${item.id}/photos`);
+                    } catch (deleteError) {
+                        console.log('[handleOutbound] No existing photos or delete failed:', deleteError.message);
+                    }
+
+                    // 새 사진 업로드 (모든 장비에 동일한 사진 적용)
+                    console.log('[handleOutbound] Uploading', photos.length, 'new photos for item:', item.id);
                     for (let j = 0; j < photos.length; j++) {
                         await axios.put(`/api/lending/items/${item.id}/photo`, {
                             photo_url: photos[j],

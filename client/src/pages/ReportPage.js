@@ -115,6 +115,15 @@ function ReportPage() {
     // 필터 모드: true = 제외 적용, false = 전체 보기
     const [filterEnabled, setFilterEnabled] = useState(true);
 
+    // 제외할 장비 ID 목록 (체크 해제된 항목)
+    const [excludedEquipments, setExcludedEquipments] = useState(() => {
+        const saved = localStorage.getItem('reportExcludedEquipments');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    // 장비 필터 모드
+    const [equipmentFilterEnabled, setEquipmentFilterEnabled] = useState(true);
+
     useEffect(() => {
         fetchReportData();
     }, [period]);
@@ -123,6 +132,11 @@ function ReportPage() {
     useEffect(() => {
         localStorage.setItem('reportExcludedHospitals', JSON.stringify(excludedHospitals));
     }, [excludedHospitals]);
+
+    // 장비 제외 설정 변경 시 로컬스토리지에 저장
+    useEffect(() => {
+        localStorage.setItem('reportExcludedEquipments', JSON.stringify(excludedEquipments));
+    }, [excludedEquipments]);
 
     // 병원 제외/포함 토글
     const toggleHospitalExclusion = (hospitalId) => {
@@ -161,6 +175,36 @@ function ReportPage() {
             hospital_count: filtered.length,
             total_surgeries: filtered.reduce((sum, h) => sum + (h.surgery_count || 0), 0)
         };
+    };
+
+    // 장비 제외/포함 토글
+    const toggleEquipmentExclusion = (equipmentId) => {
+        setExcludedEquipments(prev => {
+            if (prev.includes(equipmentId)) {
+                return prev.filter(id => id !== equipmentId);
+            } else {
+                return [...prev, equipmentId];
+            }
+        });
+    };
+
+    // 장비 전체 선택
+    const selectAllEquipments = () => {
+        setExcludedEquipments([]);
+    };
+
+    // 장비 전체 해제
+    const deselectAllEquipments = () => {
+        if (equipmentData && equipmentData.items) {
+            setExcludedEquipments(equipmentData.items.map(e => e.lending_item_id));
+        }
+    };
+
+    // 필터링된 장비 목록
+    const getFilteredEquipments = () => {
+        if (!equipmentData || !equipmentData.items) return [];
+        if (!equipmentFilterEnabled) return equipmentData.items;
+        return equipmentData.items.filter(e => !excludedEquipments.includes(e.lending_item_id));
     };
 
     const fetchReportData = async () => {
@@ -213,16 +257,19 @@ function ReportPage() {
             hospitalTableHtml = '<p style="text-align:center;color:#666;">해당 기간에 이행 완료 이력이 없습니다.</p>';
         }
 
+        // 필터링된 장비 목록 사용
+        const filteredEquipments = getFilteredEquipments();
+
         // 장비 입출고 현황 테이블 HTML 생성
         let equipmentTableHtml = '';
-        if (equipmentData && equipmentData.items.length > 0) {
+        if (filteredEquipments.length > 0) {
             equipmentTableHtml = `
                 <table>
                     <thead>
                         <tr><th>장비명</th><th>이동 경로</th><th>일자</th><th>담당자</th></tr>
                     </thead>
                     <tbody>
-                        ${equipmentData.items.map(item => {
+                        ${filteredEquipments.map(item => {
                 const path = item.movement_path || item.current_hospital;
                 const bgColor = item.is_at_office ? 'background:#f0fdf4;' : '';
                 return `<tr style="${bgColor}"><td><strong>${item.product_name}</strong></td><td>${path}</td><td style="text-align:center;">${formatDate(item.movement_date)}</td><td style="text-align:center;">${item.moved_by || '-'}</td></tr>`;
@@ -522,12 +569,73 @@ function ReportPage() {
 
                     {/* 장비 입출고 현황 */}
                     <div className="report-card">
-                        <h2>🔄 장비 입출고 현황 {equipmentData && `(총 ${equipmentData.items.length}개)`}</h2>
+                        <h2>🔄 장비 입출고 현황 {equipmentData && `(총 ${getFilteredEquipments().length}개)`}</h2>
+
+                        {/* 장비 필터 컨트롤 */}
+                        {equipmentData && equipmentData.items.length > 0 && (
+                            <div className="no-print" style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.75rem 1rem',
+                                backgroundColor: '#f8fafc',
+                                borderBottom: '1px solid #e2e8f0',
+                                flexWrap: 'wrap'
+                            }}>
+                                <span style={{ fontSize: '0.9rem', color: '#64748b', marginRight: '0.5rem' }}>
+                                    📋 인쇄 항목 선택:
+                                </span>
+                                <button
+                                    onClick={selectAllEquipments}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                                >
+                                    전체 선택
+                                </button>
+                                <button
+                                    onClick={deselectAllEquipments}
+                                    className="btn btn-secondary"
+                                    style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                                >
+                                    전체 해제
+                                </button>
+                                <label style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.3rem',
+                                    marginLeft: 'auto',
+                                    fontSize: '0.85rem',
+                                    color: '#475569',
+                                    cursor: 'pointer'
+                                }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={equipmentFilterEnabled}
+                                        onChange={(e) => setEquipmentFilterEnabled(e.target.checked)}
+                                        style={{ width: '16px', height: '16px' }}
+                                    />
+                                    제외 필터 적용
+                                </label>
+                                {excludedEquipments.length > 0 && (
+                                    <span style={{
+                                        fontSize: '0.8rem',
+                                        color: '#ef4444',
+                                        backgroundColor: '#fef2f2',
+                                        padding: '0.2rem 0.5rem',
+                                        borderRadius: '4px'
+                                    }}>
+                                        {excludedEquipments.length}개 제외됨
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
                         {equipmentData && equipmentData.items.length > 0 ? (
                             <div className="table-container">
                                 <table className="data-table">
                                     <thead>
                                         <tr>
+                                            <th className="no-print" style={{ width: '50px', textAlign: 'center' }}>선택</th>
                                             <th>장비명</th>
                                             <th>이동 경로</th>
                                             <th style={{ textAlign: 'center' }}>일자</th>
@@ -535,17 +643,29 @@ function ReportPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {equipmentData.items.map(item => (
-                                            <tr
-                                                key={item.lending_item_id}
-                                                style={item.is_at_office ? { backgroundColor: '#f0fdf4' } : {}}
-                                            >
-                                                <td><strong>{item.product_name}</strong></td>
-                                                <td style={{ color: '#4b5563' }}>{item.movement_path || item.current_hospital}</td>
-                                                <td style={{ textAlign: 'center', color: '#6b7280' }}>{formatDate(item.movement_date)}</td>
-                                                <td style={{ textAlign: 'center', color: '#6b7280' }}>{item.moved_by || '-'}</td>
-                                            </tr>
-                                        ))}
+                                        {equipmentData.items.map(item => {
+                                            const isExcluded = excludedEquipments.includes(item.lending_item_id);
+                                            if (equipmentFilterEnabled && isExcluded) return null;
+                                            return (
+                                                <tr
+                                                    key={item.lending_item_id}
+                                                    style={item.is_at_office ? { backgroundColor: '#f0fdf4' } : (isExcluded ? { opacity: 0.5, backgroundColor: '#f8f8f8' } : {})}
+                                                >
+                                                    <td className="no-print" style={{ textAlign: 'center' }}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!isExcluded}
+                                                            onChange={() => toggleEquipmentExclusion(item.lending_item_id)}
+                                                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                                                        />
+                                                    </td>
+                                                    <td><strong>{item.product_name}</strong></td>
+                                                    <td style={{ color: '#4b5563' }}>{item.movement_path || item.current_hospital}</td>
+                                                    <td style={{ textAlign: 'center', color: '#6b7280' }}>{formatDate(item.movement_date)}</td>
+                                                    <td style={{ textAlign: 'center', color: '#6b7280' }}>{item.moved_by || '-'}</td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
