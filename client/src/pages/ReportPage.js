@@ -124,6 +124,25 @@ function ReportPage() {
     // 장비 필터 모드
     const [equipmentFilterEnabled, setEquipmentFilterEnabled] = useState(true);
 
+    // 특이사항 메모
+    const [reportNote, setReportNote] = useState(() => {
+        const saved = localStorage.getItem('reportNote');
+        return saved || '';
+    });
+    const [noteSaved, setNoteSaved] = useState(false);
+
+    // 섹션별 인쇄 포함 여부
+    const [printSections, setPrintSections] = useState({
+        hospital: true,
+        equipment: true,
+        note: true,
+        sales: true
+    });
+
+    const togglePrintSection = (key) => {
+        setPrintSections(prev => ({ ...prev, [key]: !prev[key] }));
+    };
+
     useEffect(() => {
         fetchReportData();
     }, [period]);
@@ -205,6 +224,13 @@ function ReportPage() {
         if (!equipmentData || !equipmentData.items) return [];
         if (!equipmentFilterEnabled) return equipmentData.items;
         return equipmentData.items.filter(e => !excludedEquipments.includes(e.lending_item_id));
+    };
+
+    // 특이사항 저장
+    const saveReportNote = () => {
+        localStorage.setItem('reportNote', reportNote);
+        setNoteSaved(true);
+        setTimeout(() => setNoteSaved(false), 2000);
     };
 
     const fetchReportData = async () => {
@@ -339,20 +365,33 @@ function ReportPage() {
                 <h1>📊 금양메디칼 - 장비 관리 보고서</h1>
                 <p class="date-info">출력일: ${new Date().toLocaleDateString('ko-KR')} | 조회기간: ${periodText}</p>
                 
+                ${printSections.hospital ? `
                 <div class="section">
                     <div class="section-header">🏥 업체/병원 이행 완료건수</div>
                     ${hospitalTableHtml}
                 </div>
-                
+                ` : ''}
+
+                ${printSections.equipment ? `
                 <div class="section">
                     <div class="section-header">🔄 장비 입출고 현황 (총 ${equipmentData?.items?.length || 0}개)</div>
                     ${equipmentTableHtml}
                 </div>
-                
+                ` : ''}
+
+                ${printSections.note && reportNote.trim() ? `
+                <div class="section">
+                    <div class="section-header">📝 특이사항</div>
+                    <div style="padding: 10px 12px; white-space: pre-wrap; font-size: 12px; line-height: 1.6;">${reportNote.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                </div>
+                ` : ''}
+
+                ${printSections.sales ? `
                 <div class="section">
                     <div class="section-header">📋 영업팀 장비 입출고 현황판 (입고 ${salesStatusData?.summary?.inbound_count || 0} / 출고 ${salesStatusData?.summary?.outbound_count || 0})</div>
                     ${salesGridHtml}
                 </div>
+                ` : ''}
             </body>
             </html>
         `);
@@ -452,7 +491,13 @@ function ReportPage() {
                 <div className="report-sections">
                     {/* 업체/병원 이행 완료건수 */}
                     <div className="report-card">
-                        <h2>🏥 업체/병원 이행 완료건수</h2>
+                        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            🏥 업체/병원 이행 완료건수
+                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 'normal', color: '#475569', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={printSections.hospital} onChange={() => togglePrintSection('hospital')} style={{ width: '16px', height: '16px' }} />
+                                인쇄 포함
+                            </label>
+                        </h2>
 
                         {/* 필터 컨트롤 */}
                         {transactionData && transactionData.hospitals.length > 0 && (
@@ -569,7 +614,13 @@ function ReportPage() {
 
                     {/* 장비 입출고 현황 */}
                     <div className="report-card">
-                        <h2>🔄 장비 입출고 현황 {equipmentData && `(총 ${getFilteredEquipments().length}개)`}</h2>
+                        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            🔄 장비 입출고 현황 {equipmentData && `(총 ${getFilteredEquipments().length}개)`}
+                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 'normal', color: '#475569', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={printSections.equipment} onChange={() => togglePrintSection('equipment')} style={{ width: '16px', height: '16px' }} />
+                                인쇄 포함
+                            </label>
+                        </h2>
 
                         {/* 장비 필터 컨트롤 */}
                         {equipmentData && equipmentData.items.length > 0 && (
@@ -676,16 +727,70 @@ function ReportPage() {
                         )}
                     </div>
 
+                    {/* 특이사항 입력 */}
+                    <div className="report-card">
+                        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            📝 특이사항
+                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 'normal', color: '#475569', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={printSections.note} onChange={() => togglePrintSection('note')} style={{ width: '16px', height: '16px' }} />
+                                인쇄 포함
+                            </label>
+                        </h2>
+                        <div className="no-print" style={{ padding: '1rem' }}>
+                            <textarea
+                                value={reportNote}
+                                onChange={(e) => setReportNote(e.target.value)}
+                                placeholder="주간 보고 특이사항을 입력하세요. (예: ZENIUS MIS#5 신규 등록, ILIAD SCREW#3 폐기 처리 등)"
+                                style={{
+                                    width: '100%',
+                                    minHeight: '120px',
+                                    padding: '0.75rem',
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '8px',
+                                    fontSize: '0.95rem',
+                                    lineHeight: '1.6',
+                                    resize: 'vertical',
+                                    fontFamily: 'inherit'
+                                }}
+                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.75rem' }}>
+                                <button
+                                    onClick={saveReportNote}
+                                    className="btn btn-primary"
+                                    style={{ padding: '0.5rem 1.2rem', fontSize: '0.9rem' }}
+                                >
+                                    💾 저장
+                                </button>
+                                {noteSaved && (
+                                    <span style={{ color: '#10b981', fontSize: '0.9rem', fontWeight: '500' }}>
+                                        저장되었습니다
+                                    </span>
+                                )}
+                                {reportNote.trim() && (
+                                    <span style={{ color: '#6b7280', fontSize: '0.85rem', marginLeft: 'auto' }}>
+                                        인쇄 시 특이사항란에 출력됩니다
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* 영업팀 장비 입출고 현황판 */}
                     <div className="report-card">
-                        <h2>
-                            📋 영업팀 장비 입출고 현황판
-                            {salesStatusData && (
-                                <span style={{ fontSize: '0.9rem', fontWeight: 'normal', marginLeft: '1rem', color: '#666' }}>
-                                    입고 <span style={{ color: '#10b981', fontWeight: 'bold' }}>{salesStatusData.summary.inbound_count}</span> /
-                                    출고 <span style={{ color: '#ef4444', fontWeight: 'bold' }}> {salesStatusData.summary.outbound_count}</span>
-                                </span>
-                            )}
+                        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                                📋 영업팀 장비 입출고 현황판
+                                {salesStatusData && (
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 'normal', marginLeft: '1rem', color: '#666' }}>
+                                        입고 <span style={{ color: '#10b981', fontWeight: 'bold' }}>{salesStatusData.summary.inbound_count}</span> /
+                                        출고 <span style={{ color: '#ef4444', fontWeight: 'bold' }}> {salesStatusData.summary.outbound_count}</span>
+                                    </span>
+                                )}
+                            </span>
+                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 'normal', color: '#475569', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={printSections.sales} onChange={() => togglePrintSection('sales')} style={{ width: '16px', height: '16px' }} />
+                                인쇄 포함
+                            </label>
                         </h2>
                         {salesStatusData && salesStatusData.groups.length > 0 ? (
                             <div className="sales-grid-desktop">
