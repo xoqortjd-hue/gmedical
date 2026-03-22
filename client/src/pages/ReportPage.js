@@ -100,6 +100,7 @@ const printStyles = `
 
 function ReportPage() {
     const [period, setPeriod] = useState('weekly');
+    const [dateOffset, setDateOffset] = useState(0); // 0=현재, -1=이전, -2=그 이전...
     const [transactionData, setTransactionData] = useState(null);
     const [equipmentData, setEquipmentData] = useState(null);
     const [salesStatusData, setSalesStatusData] = useState(null);
@@ -142,7 +143,7 @@ function ReportPage() {
 
     useEffect(() => {
         fetchReportData();
-    }, [period]);
+    }, [period, dateOffset]);
 
     // 기간 변경 시 해당 기간의 특이사항 서버에서 불러오기
     useEffect(() => {
@@ -249,11 +250,25 @@ function ReportPage() {
         }
     };
 
+    // 날짜 범위 계산
+    const getDateRange = () => {
+        const days = period === 'monthly' ? 30 : 7;
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + (dateOffset * days));
+        const startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - days);
+        return {
+            start_date: startDate.toISOString().split('T')[0],
+            end_date: endDate.toISOString().split('T')[0]
+        };
+    };
+
     const fetchReportData = async () => {
         setLoading(true);
         try {
+            const { start_date, end_date } = getDateRange();
             const [transRes, equipRes, salesRes] = await Promise.all([
-                axios.get(`/api/lending/report/transaction-summary?period=${period}`),
+                axios.get(`/api/lending/report/transaction-summary?period=${period}&start_date=${start_date}&end_date=${end_date}`),
                 axios.get('/api/lending/report/equipment-status?category=EQUIPMENT'),
                 axios.get('/api/lending/report/sales-status')
             ]);
@@ -479,19 +494,41 @@ function ReportPage() {
             {/* 기간 선택 */}
             <div className="table-controls no-print">
                 <button
-                    onClick={() => setPeriod('weekly')}
+                    onClick={() => setDateOffset(prev => prev - 1)}
+                    className="btn btn-secondary"
+                    title="이전 기간"
+                >
+                    ◀ 이전
+                </button>
+                <button
+                    onClick={() => { setPeriod('weekly'); setDateOffset(0); }}
                     className={`btn ${period === 'weekly' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ marginLeft: '0.5rem' }}
                 >
                     📅 주간 (7일)
                 </button>
                 <button
-                    onClick={() => setPeriod('monthly')}
+                    onClick={() => { setPeriod('monthly'); setDateOffset(0); }}
                     className={`btn ${period === 'monthly' ? 'btn-primary' : 'btn-secondary'}`}
                     style={{ marginLeft: '0.5rem' }}
                 >
                     📅 월간 (30일)
                 </button>
-                <button onClick={fetchReportData} className="btn btn-secondary" style={{ marginLeft: '1rem' }}>
+                <button
+                    onClick={() => setDateOffset(prev => prev + 1)}
+                    className="btn btn-secondary"
+                    style={{ marginLeft: '0.5rem' }}
+                    disabled={dateOffset >= 0}
+                    title="다음 기간"
+                >
+                    다음 ▶
+                </button>
+                <button onClick={() => setDateOffset(0)} className="btn btn-secondary" style={{ marginLeft: '0.5rem' }}
+                    disabled={dateOffset === 0}
+                >
+                    오늘
+                </button>
+                <button onClick={fetchReportData} className="btn btn-secondary" style={{ marginLeft: '0.5rem' }}>
                     🔄 새로고침
                 </button>
                 {transactionData && (

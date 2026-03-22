@@ -1265,16 +1265,24 @@ router.delete('/biologic-inventory/:id', (req, res) => {
 
 // 거래 이력 조회 (병원별 수술 건수 - 출고→입고 사이클 = 1건 수술)
 router.get('/report/transaction-summary', (req, res) => {
-    const { period = 'weekly' } = req.query;
+    const { period = 'weekly', start_date, end_date } = req.query;
 
-    // 기간 계산: weekly = 최근 7일, monthly = 최근 30일
-    const days = period === 'monthly' ? 30 : 7;
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
-    const startDateStr = startDate.toISOString().split('T')[0];
+    let startDateStr, endDateStr;
 
-    const endDate = new Date();
-    const endDateStr = endDate.toISOString().split('T')[0];
+    if (start_date && end_date) {
+        // 커스텀 날짜 범위 사용
+        startDateStr = start_date;
+        endDateStr = end_date;
+    } else {
+        // 기간 계산: weekly = 최근 7일, monthly = 최근 30일
+        const days = period === 'monthly' ? 30 : 7;
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        startDateStr = startDate.toISOString().split('T')[0];
+
+        const endDate = new Date();
+        endDateStr = endDate.toISOString().split('T')[0];
+    }
 
     // 병원별 수술 건수 집계 (입고 = 수술 완료, 병원에서 부산사무실로 돌아온 건)
     // 1건의 수술 = 장비가 병원에서 사용 후 부산사무실로 입고된 것
