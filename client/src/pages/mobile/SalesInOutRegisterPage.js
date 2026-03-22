@@ -95,18 +95,14 @@ function SalesInOutRegisterPage() {
         }
     };
 
-    // 담당자 목록 조회 (기존 moved_by 값에서 추출)
+    // 담당자 목록 조회 (staff_members 테이블에서)
     const fetchPersonnelList = async () => {
         try {
             console.log('[fetchPersonnelList] Fetching...');
-            const res = await axios.get('/api/lending/items');
-            const uniquePersonnel = [...new Set(
-                res.data
-                    .map(item => item.moved_by)
-                    .filter(name => name && name.trim())
-            )];
-            setPersonnelList(uniquePersonnel);
-            console.log('[fetchPersonnelList] Success:', uniquePersonnel.length, 'personnel');
+            const res = await axios.get('/api/staff');
+            const names = res.data.map(s => s.name);
+            setPersonnelList(names);
+            console.log('[fetchPersonnelList] Success:', names.length, 'personnel');
         } catch (error) {
             console.error('[fetchPersonnelList] Error:', error);
         }
@@ -511,8 +507,11 @@ function SalesInOutRegisterPage() {
             // 담당자 결정
             const movedBy = selectedPersonnel || newPersonnelName || '영업팀';
 
-            // 담당자 목록에 신규 추가
+            // 담당자 목록에 신규 추가 (DB 저장)
             if (newPersonnelName.trim() && !personnelList.includes(newPersonnelName.trim())) {
+                try {
+                    await axios.post('/api/staff', { name: newPersonnelName.trim() });
+                } catch (e) { console.error('담당자 추가 실패:', e); }
                 setPersonnelList(prev => [...prev, newPersonnelName.trim()]);
             }
 

@@ -62,6 +62,19 @@ db.serialize(() => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
 
+    db.run(`CREATE TABLE IF NOT EXISTS staff_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`, function() {
+        // 초기 담당자 데이터 삽입 (중복 무시)
+        const staffList = ['박성현', '이호진', '하준혁', '정성엽', '이주호', '이정국', '오형준', '조용원', '하수천'];
+        staffList.forEach(name => {
+            db.run('INSERT OR IGNORE INTO staff_members (name) VALUES (?)', [name]);
+        });
+    });
+
     db.run(`CREATE TABLE IF NOT EXISTS report_notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         period_start DATE NOT NULL,
@@ -71,6 +84,31 @@ db.serialize(() => {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(period_start, period_end)
     )`);
+});
+
+// ===== 담당자 API =====
+app.get('/api/staff', (req, res) => {
+    db.all('SELECT * FROM staff_members WHERE active = 1 ORDER BY name', [], (err, rows) => {
+        if (err) {
+            console.error('담당자 조회 실패:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json(rows);
+    });
+});
+
+app.post('/api/staff', (req, res) => {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+        return res.status(400).json({ error: '담당자 이름은 필수입니다' });
+    }
+    db.run('INSERT OR IGNORE INTO staff_members (name) VALUES (?)', [name.trim()], function(err) {
+        if (err) {
+            console.error('담당자 추가 실패:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json({ success: true, id: this.lastID, name: name.trim() });
+    });
 });
 
 // ===== 거래처 API =====
