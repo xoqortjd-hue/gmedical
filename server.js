@@ -61,6 +61,16 @@ db.serialize(() => {
         address TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS report_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(period_start, period_end)
+    )`);
 });
 
 // ===== 거래처 API =====

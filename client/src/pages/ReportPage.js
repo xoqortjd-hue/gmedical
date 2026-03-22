@@ -125,10 +125,7 @@ function ReportPage() {
     const [equipmentFilterEnabled, setEquipmentFilterEnabled] = useState(true);
 
     // 특이사항 메모
-    const [reportNote, setReportNote] = useState(() => {
-        const saved = localStorage.getItem('reportNote');
-        return saved || '';
-    });
+    const [reportNote, setReportNote] = useState('');
     const [noteSaved, setNoteSaved] = useState(false);
 
     // 섹션별 인쇄 포함 여부
@@ -146,6 +143,15 @@ function ReportPage() {
     useEffect(() => {
         fetchReportData();
     }, [period]);
+
+    // 기간 변경 시 해당 기간의 특이사항 서버에서 불러오기
+    useEffect(() => {
+        if (transactionData?.start_date && transactionData?.end_date) {
+            axios.get(`/api/lending/report/note?start_date=${transactionData.start_date}&end_date=${transactionData.end_date}`)
+                .then(res => setReportNote(res.data.note || ''))
+                .catch(err => console.error('특이사항 조회 실패:', err));
+        }
+    }, [transactionData?.start_date, transactionData?.end_date]);
 
     // 제외 설정 변경 시 로컬스토리지에 저장
     useEffect(() => {
@@ -226,11 +232,21 @@ function ReportPage() {
         return equipmentData.items.filter(e => !excludedEquipments.includes(e.lending_item_id));
     };
 
-    // 특이사항 저장
-    const saveReportNote = () => {
-        localStorage.setItem('reportNote', reportNote);
-        setNoteSaved(true);
-        setTimeout(() => setNoteSaved(false), 2000);
+    // 특이사항 저장 (서버 DB)
+    const saveReportNote = async () => {
+        if (!transactionData?.start_date || !transactionData?.end_date) return;
+        try {
+            await axios.post('/api/lending/report/note', {
+                start_date: transactionData.start_date,
+                end_date: transactionData.end_date,
+                note: reportNote
+            });
+            setNoteSaved(true);
+            setTimeout(() => setNoteSaved(false), 2000);
+        } catch (error) {
+            console.error('특이사항 저장 실패:', error);
+            alert('저장에 실패했습니다.');
+        }
     };
 
     const fetchReportData = async () => {

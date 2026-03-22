@@ -1631,5 +1631,53 @@ router.get('/report/sales-status', (req, res) => {
     });
 });
 
-module.exports = router;
+// 리포트 특이사항 조회
+router.get('/report/note', (req, res) => {
+    const { start_date, end_date } = req.query;
 
+    if (!start_date || !end_date) {
+        return res.status(400).json({ error: 'start_date와 end_date는 필수입니다' });
+    }
+
+    db.get(
+        'SELECT * FROM report_notes WHERE period_start = ? AND period_end = ?',
+        [start_date, end_date],
+        (err, row) => {
+            if (err) {
+                console.error('리포트 특이사항 조회 실패:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+            res.json({ note: row ? row.note : '', id: row ? row.id : null });
+        }
+    );
+});
+
+// 리포트 특이사항 저장 (upsert)
+router.post('/report/note', (req, res) => {
+    const { start_date, end_date, note } = req.body;
+
+    if (!start_date || !end_date) {
+        return res.status(400).json({ error: 'start_date와 end_date는 필수입니다' });
+    }
+
+    const query = `
+        INSERT INTO report_notes (period_start, period_end, note, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(period_start, period_end)
+        DO UPDATE SET note = excluded.note, updated_at = CURRENT_TIMESTAMP
+    `;
+
+    db.run(query, [start_date, end_date, note || ''], function (err) {
+        if (err) {
+            console.error('리포트 특이사항 저장 실패:', err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        res.json({
+            success: true,
+            id: this.lastID || null,
+            message: '특이사항이 저장되었습니다'
+        });
+    });
+});
+
+module.exports = router;
