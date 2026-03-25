@@ -235,10 +235,12 @@ function RepairManagementPage() {
                         <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>수리 기록이 없습니다</div>
                     ) : filteredRepairs.map(repair => {
                         const days = getDaysElapsed(repair.requested_date);
+                        const nextStatus = getNextStatus(repair.status);
+                        const nextLabel = nextStatus ? STATUS_LABELS[nextStatus] : null;
                         return (
                             <div key={repair.id} onClick={() => openDetail(repair)} style={{
                                 background: 'white', borderRadius: '12px', padding: '1rem', marginBottom: '0.75rem',
-                                border: `1px solid ${STATUS_COLORS[repair.status]}20`, cursor: 'pointer',
+                                border: `2px solid ${STATUS_COLORS[repair.status]}40`, cursor: 'pointer',
                                 boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
                             }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -259,6 +261,24 @@ function RepairManagementPage() {
                                             </span>
                                         )}
                                     </div>
+                                </div>
+                                {/* 다음 단계 안내 */}
+                                <div style={{
+                                    marginTop: '0.6rem', paddingTop: '0.6rem', borderTop: '1px solid #f1f5f9',
+                                    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                }}>
+                                    {nextLabel ? (
+                                        <span style={{
+                                            padding: '4px 12px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: '600',
+                                            background: `${STATUS_COLORS[nextStatus]}15`, color: STATUS_COLORS[nextStatus],
+                                            border: `1px solid ${STATUS_COLORS[nextStatus]}30`
+                                        }}>
+                                            👆 탭하여 → {nextLabel} 처리
+                                        </span>
+                                    ) : (
+                                        <span style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: '600' }}>✅ 완료</span>
+                                    )}
+                                    <span style={{ fontSize: '0.7rem', color: '#9ca3af' }}>상세보기 →</span>
                                 </div>
                             </div>
                         );
