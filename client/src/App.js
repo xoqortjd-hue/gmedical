@@ -32,6 +32,7 @@ import SalesHomePage from './pages/mobile/SalesHomePage';
 import SalesInOutRegisterPage from './pages/mobile/SalesInOutRegisterPage';
 import SalesStatusDashboard from './pages/mobile/SalesStatusDashboard';
 import SalesEquipmentQuickPage from './pages/mobile/SalesEquipmentQuickPage';
+import RepairManagementPage from './pages/mobile/RepairManagementPage';
 import ChannelQRPage from './pages/ChannelQRPage';
 import GeneralProductRegistrationPage from './pages/GeneralProductRegistrationPage';
 import HospitalProductRegistrationPage from './pages/HospitalProductRegistrationPage';
@@ -92,6 +93,7 @@ function AppContent() {
           <Route path="/mobile/sales/register" element={<SalesInOutRegisterPage />} />
           <Route path="/mobile/sales/status" element={<SalesStatusDashboard />} />
           <Route path="/mobile/sales/quick" element={<SalesEquipmentQuickPage />} />
+          <Route path="/mobile/sales/repair" element={<RepairManagementPage />} />
 
           {/* 모바일 - 관리팀 라우트 (기존 기능) */}
           <Route path="/mobile/management" element={<MobileLendingPage />} />

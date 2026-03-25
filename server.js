@@ -75,6 +75,34 @@ db.serialize(() => {
         });
     });
 
+    db.run(`CREATE TABLE IF NOT EXISTS repair_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        lending_item_id INTEGER,
+        product_name TEXT NOT NULL,
+        status TEXT DEFAULT 'REQUESTED' CHECK(status IN ('REQUESTED','SENT','IN_REPAIR','RETURNED','COMPLETED')),
+        repair_company TEXT,
+        issue_description TEXT,
+        requested_by TEXT,
+        requested_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+        sent_date DATETIME,
+        returned_date DATETIME,
+        completed_date DATETIME,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS repair_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        repair_id INTEGER NOT NULL,
+        status_change TEXT,
+        note TEXT,
+        photo_url TEXT,
+        logged_by TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (repair_id) REFERENCES repair_records(id)
+    )`);
+
     db.run(`CREATE TABLE IF NOT EXISTS report_notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         period_start DATE NOT NULL,
@@ -108,6 +136,105 @@ app.post('/api/staff', (req, res) => {
             return res.status(500).json({ error: err.message });
         }
         res.json({ success: true, id: this.lastID, name: name.trim() });
+    });
+});
+
+// ===== 수리 관리 API =====
+
+// 수리 목록 조회
+app.get('/api/repairs', (req, res) => {
+    const { status } = req.query;
+    let query = 'SELECT * FROM repair_records ORDER BY CASE status WHEN "IN_REPAIR" THEN 1 WHEN "SENT" THEN 2 WHEN "REQUESTED" THEN 3 WHEN "RETURNED" THEN 4 WHEN "COMPLETED" THEN 5 END, updated_at DESC';
+    let params = [];
+    if (status && status !== 'all') {
+        query = 'SELECT * FROM repair_records WHERE status = ? ORDER BY updated_at DESC';
+        params = [status];
+    }
+    db.all(query, params, (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// 수리 상세 + 로그 조회
+app.get('/api/repairs/:id', (req, res) => {
+    db.get('SELECT * FROM repair_records WHERE id = ?', [req.params.id], (err, record) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!record) return res.status(404).json({ error: '수리 기록을 찾을 수 없습니다' });
+        db.all('SELECT * FROM repair_logs WHERE repair_id = ? ORDER BY created_at DESC', [req.params.id], (err2, logs) => {
+            if (err2) return res.status(500).json({ error: err2.message });
+            res.json({ ...record, logs });
+        });
+    });
+});
+
+// 수리 의뢰 등록
+app.post('/api/repairs', (req, res) => {
+    const { lending_item_id, product_name, repair_company, issue_description, requested_by, notes, photo_url } = req.body;
+    if (!product_name) return res.status(400).json({ error: '장비명은 필수입니다' });
+
+    db.run(`INSERT INTO repair_records (lending_item_id, product_name, status, repair_company, issue_description, requested_by, notes)
+        VALUES (?, ?, 'REQUESTED', ?, ?, ?, ?)`,
+        [lending_item_id || null, product_name, repair_company || '', issue_description || '', requested_by || '', notes || ''],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            const repairId = this.lastID;
+            // 초기 로그
+            db.run(`INSERT INTO repair_logs (repair_id, status_change, note, photo_url, logged_by) VALUES (?, ?, ?, ?, ?)`,
+                [repairId, '의뢰접수', issue_description || '수리 의뢰 등록', photo_url || null, requested_by || ''],
+                () => res.json({ success: true, id: repairId })
+            );
+        }
+    );
+});
+
+// 수리 상태 변경
+app.put('/api/repairs/:id/status', (req, res) => {
+    const { status, note, logged_by, photo_url } = req.body;
+    const validStatuses = ['REQUESTED', 'SENT', 'IN_REPAIR', 'RETURNED', 'COMPLETED'];
+    if (!validStatuses.includes(status)) return res.status(400).json({ error: '유효하지 않은 상태입니다' });
+
+    const statusLabels = { REQUESTED: '의뢰접수', SENT: '택배발송', IN_REPAIR: '수리중', RETURNED: '회수', COMPLETED: '전달완료' };
+    const dateField = { SENT: 'sent_date', RETURNED: 'returned_date', COMPLETED: 'completed_date' };
+    const dateUpdate = dateField[status] ? `, ${dateField[status]} = CURRENT_TIMESTAMP` : '';
+
+    db.run(`UPDATE repair_records SET status = ?, updated_at = CURRENT_TIMESTAMP${dateUpdate} WHERE id = ?`,
+        [status, req.params.id], function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            db.run(`INSERT INTO repair_logs (repair_id, status_change, note, photo_url, logged_by) VALUES (?, ?, ?, ?, ?)`,
+                [req.params.id, statusLabels[status], note || '', photo_url || null, logged_by || ''],
+                () => res.json({ success: true })
+            );
+        }
+    );
+});
+
+// 수리 로그 추가 (사진/메모)
+app.post('/api/repairs/:id/log', (req, res) => {
+    const { note, logged_by, photo_url } = req.body;
+    db.run(`INSERT INTO repair_logs (repair_id, status_change, note, photo_url, logged_by) VALUES (?, ?, ?, ?, ?)`,
+        [req.params.id, '메모 추가', note || '', photo_url || null, logged_by || ''],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            db.run('UPDATE repair_records SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [req.params.id]);
+            res.json({ success: true, id: this.lastID });
+        }
+    );
+});
+
+// 수리 업체 목록 (이전 입력 기록)
+app.get('/api/repair-companies', (req, res) => {
+    db.all('SELECT DISTINCT repair_company FROM repair_records WHERE repair_company IS NOT NULL AND repair_company != "" ORDER BY repair_company', [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows.map(r => r.repair_company));
+    });
+});
+
+// 수리 현황 요약 (리포트용)
+app.get('/api/repairs/summary/active', (req, res) => {
+    db.all('SELECT * FROM repair_records WHERE status NOT IN ("COMPLETED") ORDER BY requested_date ASC', [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
     });
 });
 

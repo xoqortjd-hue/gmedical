@@ -58,6 +58,13 @@ function SalesBottomNav() {
             isActive: currentPath === '/mobile/sales/quick'
         },
         {
+            id: 'repair',
+            icon: '🔧',
+            label: '수리관리',
+            path: '/mobile/sales/repair',
+            isActive: currentPath === '/mobile/sales/repair'
+        },
+        {
             id: 'status',
             icon: '📊',
             label: '입출고현황',

@@ -104,6 +104,7 @@ function ReportPage() {
     const [transactionData, setTransactionData] = useState(null);
     const [equipmentData, setEquipmentData] = useState(null);
     const [salesStatusData, setSalesStatusData] = useState(null);
+    const [repairData, setRepairData] = useState([]);
     const [loading, setLoading] = useState(true);
 
     // 제외할 병원 ID 목록 (체크 해제된 항목)
@@ -134,7 +135,8 @@ function ReportPage() {
         hospital: true,
         equipment: true,
         note: true,
-        sales: true
+        sales: true,
+        repair: true
     });
 
     const togglePrintSection = (key) => {
@@ -275,6 +277,11 @@ function ReportPage() {
             setTransactionData(transRes.data);
             setEquipmentData(equipRes.data);
             setSalesStatusData(salesRes.data);
+            // 수리 현황 조회
+            try {
+                const repairRes = await axios.get('/api/repairs/summary/active');
+                setRepairData(repairRes.data);
+            } catch (e) { setRepairData([]); }
         } catch (error) {
             console.error('리포트 데이터 조회 실패:', error);
         } finally {
@@ -421,6 +428,22 @@ function ReportPage() {
                 <div class="section">
                     <div class="section-header">📋 영업팀 장비 입출고 현황판 (입고 ${salesStatusData?.summary?.inbound_count || 0} / 출고 ${salesStatusData?.summary?.outbound_count || 0})</div>
                     ${salesGridHtml}
+                </div>
+                ` : ''}
+
+                ${printSections.repair && repairData.length > 0 ? `
+                <div class="section">
+                    <div class="section-header">🔧 수리 현황 (${repairData.length}건 진행중)</div>
+                    <table>
+                        <thead><tr><th>장비명</th><th>상태</th><th>수리업체</th><th>사유</th><th>의뢰일</th><th>경과</th></tr></thead>
+                        <tbody>
+                            ${repairData.map(r => {
+                                const days = Math.floor((new Date() - new Date(r.requested_date)) / (1000*60*60*24));
+                                const statusLabels = { REQUESTED:'의뢰접수', SENT:'택배발송', IN_REPAIR:'수리중', RETURNED:'회수' };
+                                return `<tr><td><strong>${r.product_name}</strong></td><td style="text-align:center;">${statusLabels[r.status] || r.status}</td><td>${r.repair_company || '-'}</td><td>${r.issue_description || '-'}</td><td style="text-align:center;">${new Date(r.requested_date).toLocaleDateString('ko-KR')}</td><td style="text-align:center;color:${days>=14?'#ef4444':days>=7?'#f59e0b':'#333'};font-weight:${days>=7?'bold':'normal'};">D+${days}</td></tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
                 </div>
                 ` : ''}
             </body>
@@ -881,6 +904,47 @@ function ReportPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* 수리 현황 */}
+                    {repairData.length > 0 && (
+                        <div className="report-card">
+                            <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                🔧 수리 현황 ({repairData.length}건 진행중)
+                                <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 'normal', color: '#475569', cursor: 'pointer' }}>
+                                    <input type="checkbox" checked={printSections.repair} onChange={() => togglePrintSection('repair')} style={{ width: '16px', height: '16px' }} />
+                                    인쇄 포함
+                                </label>
+                            </h2>
+                            <div className="table-container">
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>장비명</th>
+                                            <th style={{ textAlign: 'center' }}>상태</th>
+                                            <th>수리업체</th>
+                                            <th>사유</th>
+                                            <th style={{ textAlign: 'center' }}>경과</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {repairData.map(r => {
+                                            const days = Math.floor((new Date() - new Date(r.requested_date)) / (1000*60*60*24));
+                                            const statusLabels = { REQUESTED:'의뢰접수', SENT:'택배발송', IN_REPAIR:'수리중', RETURNED:'회수' };
+                                            return (
+                                                <tr key={r.id}>
+                                                    <td><strong>{r.product_name}</strong></td>
+                                                    <td style={{ textAlign: 'center' }}>{statusLabels[r.status] || r.status}</td>
+                                                    <td>{r.repair_company || '-'}</td>
+                                                    <td>{r.issue_description || '-'}</td>
+                                                    <td style={{ textAlign: 'center', color: days >= 14 ? '#ef4444' : days >= 7 ? '#f59e0b' : '#333', fontWeight: days >= 7 ? 'bold' : 'normal' }}>D+{days}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
