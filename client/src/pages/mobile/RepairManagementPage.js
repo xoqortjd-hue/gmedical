@@ -267,11 +267,15 @@ function RepairManagementPage() {
             </div>
 
             {/* 새 의뢰 버튼 */}
-            <button onClick={() => { setShowNewModal(true); setMessage(''); }} style={{
-                position: 'fixed', bottom: '80px', right: '1rem', width: '56px', height: '56px',
-                borderRadius: '50%', background: '#ef4444', color: 'white', border: 'none',
-                fontSize: '1.5rem', cursor: 'pointer', boxShadow: '0 4px 12px rgba(239,68,68,0.4)', zIndex: 1000
-            }}>+</button>
+            <div style={{ padding: '0.75rem' }}>
+                <button onClick={() => { setShowNewModal(true); setMessage(''); }} style={{
+                    width: '100%', padding: '1rem', borderRadius: '12px', border: '2px dashed #ef4444',
+                    background: '#fef2f2', color: '#ef4444', fontSize: '1rem', fontWeight: '700',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
+                }}>
+                    ➕ 새 수리 의뢰 등록
+                </button>
+            </div>
 
             {/* 새 의뢰 모달 */}
             {showNewModal && (
