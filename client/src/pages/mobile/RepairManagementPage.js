@@ -246,9 +246,13 @@ function RepairManagementPage() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                                     <strong style={{ fontSize: '1rem' }}>{repair.product_name}</strong>
                                     <span style={{
-                                        padding: '3px 10px', borderRadius: '12px', fontSize: '0.7rem', fontWeight: '700',
-                                        color: 'white', background: STATUS_COLORS[repair.status]
-                                    }}>{STATUS_LABELS[repair.status]}</span>
+                                        padding: '5px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '700',
+                                        color: 'white', background: STATUS_COLORS[repair.status],
+                                        display: 'flex', alignItems: 'center', gap: '4px',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
+                                    }}>
+                                        {STATUS_LABELS[repair.status]} · 상세내역보기 →
+                                    </span>
                                 </div>
                                 <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
                                     {repair.issue_description && <div>사유: {repair.issue_description}</div>}
