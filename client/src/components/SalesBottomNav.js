@@ -51,6 +51,13 @@ function SalesBottomNav() {
             isActive: currentPath === '/mobile/sales/register' && currentMode === 'new'
         },
         {
+            id: 'quick',
+            icon: '⚡',
+            label: '핵심기구',
+            path: '/mobile/sales/quick',
+            isActive: currentPath === '/mobile/sales/quick'
+        },
+        {
             id: 'status',
             icon: '📊',
             label: '입출고현황',
