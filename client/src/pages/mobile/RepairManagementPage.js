@@ -77,8 +77,12 @@ function RepairManagementPage() {
         try { const res = await axios.get('/api/staff'); setPersonnelList(res.data.map(s => s.name)); } catch (e) {}
     };
 
-    const fetchCompanies = async () => {
-        try { const res = await axios.get('/api/repair-companies'); setCompanies(res.data); } catch (e) {}
+    const fetchCompanies = async (productName) => {
+        try {
+            const url = productName ? `/api/repair-companies?product_name=${encodeURIComponent(productName)}` : '/api/repair-companies';
+            const res = await axios.get(url);
+            setCompanies(res.data);
+        } catch (e) {}
     };
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -344,7 +348,8 @@ function RepairManagementPage() {
                     onClick={(e) => { if (e.target === e.currentTarget) setShowNewModal(false); }}>
                     <div style={{ background: 'white', borderRadius: '16px', width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', padding: '1.5rem' }}>
                         <h3 style={{ margin: '0 0 1rem' }}>🔧 새 수리 의뢰 등록</h3>
-                        <input placeholder="장비명 *" value={newForm.product_name} onChange={e => setNewForm(p => ({ ...p, product_name: e.target.value }))}
+                        <input placeholder="장비명 *" value={newForm.product_name} onChange={e => { setNewForm(p => ({ ...p, product_name: e.target.value })); fetchCompanies(e.target.value.trim()); }}
+                            onBlur={e => fetchCompanies(e.target.value.trim())}
                             style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #d1d5db', marginBottom: '0.5rem', fontSize: '0.9rem', boxSizing: 'border-box' }} />
                         <textarea placeholder="수리 사유 *" value={newForm.issue_description} onChange={e => setNewForm(p => ({ ...p, issue_description: e.target.value }))}
                             style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #d1d5db', marginBottom: '0.5rem', fontSize: '0.9rem', minHeight: '80px', boxSizing: 'border-box' }} />
@@ -353,7 +358,7 @@ function RepairManagementPage() {
                                 style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '0.9rem', boxSizing: 'border-box' }} />
                             {companies.length > 0 && (
                                 <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '2px' }}>
-                                    이전: {companies.map(c => <span key={c} onClick={() => setNewForm(p => ({ ...p, repair_company: c }))} style={{ cursor: 'pointer', color: '#6366f1', marginRight: '8px' }}>{c}</span>)}
+                                    이전 수리업체: {companies.map(c => <span key={c} onClick={() => setNewForm(p => ({ ...p, repair_company: c }))} style={{ cursor: 'pointer', color: '#6366f1', marginRight: '8px', textDecoration: 'underline' }}>{c}</span>)}
                                 </div>
                             )}
                         </div>

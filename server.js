@@ -222,9 +222,18 @@ app.post('/api/repairs/:id/log', (req, res) => {
     );
 });
 
-// 수리 업체 목록 (이전 입력 기록)
+// 수리 업체 목록 (이전 입력 기록 - 장비명 기준 필터)
 app.get('/api/repair-companies', (req, res) => {
-    db.all('SELECT DISTINCT repair_company FROM repair_records WHERE repair_company IS NOT NULL AND repair_company != "" ORDER BY repair_company', [], (err, rows) => {
+    const { product_name } = req.query;
+    let query, params;
+    if (product_name) {
+        query = 'SELECT DISTINCT repair_company FROM repair_records WHERE repair_company IS NOT NULL AND repair_company != "" AND product_name = ? ORDER BY repair_company';
+        params = [product_name];
+    } else {
+        query = 'SELECT DISTINCT repair_company FROM repair_records WHERE repair_company IS NOT NULL AND repair_company != "" ORDER BY repair_company';
+        params = [];
+    }
+    db.all(query, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows.map(r => r.repair_company));
     });
