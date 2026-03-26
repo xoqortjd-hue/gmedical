@@ -450,7 +450,10 @@ function ReportPage() {
             </html>
         `);
         printWindow.document.close();
+        printWindow.focus();
         printWindow.print();
+        // 인쇄 후 원래 창으로 포커스 복귀
+        setTimeout(() => { window.focus(); }, 500);
     };
 
     // 날짜 포맷 (MM-DD)

@@ -156,6 +156,14 @@ app.get('/api/repairs', (req, res) => {
     });
 });
 
+// 수리 현황 요약 (리포트용) - :id 라우트보다 먼저 선언 필요
+app.get('/api/repairs/summary/active', (req, res) => {
+    db.all('SELECT * FROM repair_records WHERE status NOT IN ("COMPLETED") ORDER BY requested_date ASC', [], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
 // 수리 상세 + 로그 조회
 app.get('/api/repairs/:id', (req, res) => {
     db.get('SELECT * FROM repair_records WHERE id = ?', [req.params.id], (err, record) => {
@@ -236,14 +244,6 @@ app.get('/api/repair-companies', (req, res) => {
     db.all(query, params, (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows.map(r => r.repair_company));
-    });
-});
-
-// 수리 현황 요약 (리포트용)
-app.get('/api/repairs/summary/active', (req, res) => {
-    db.all('SELECT * FROM repair_records WHERE status NOT IN ("COMPLETED") ORDER BY requested_date ASC', [], (err, rows) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(rows);
     });
 });
 
