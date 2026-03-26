@@ -839,10 +839,12 @@ function ReportPage() {
                                 인쇄 포함
                             </label>
                         </h2>
-                        <div className="no-print" style={{ padding: '1rem' }}>
+                        <div className="no-print" style={{ padding: '1rem', position: 'relative', zIndex: 5 }}>
                             <textarea
                                 value={reportNote}
                                 onChange={(e) => setReportNote(e.target.value)}
+                                onFocus={(e) => e.target.style.outline = '2px solid #6366f1'}
+                                onBlur={(e) => e.target.style.outline = 'none'}
                                 placeholder="주간 보고 특이사항을 입력하세요. (예: ZENIUS MIS#5 신규 등록, ILIAD SCREW#3 폐기 처리 등)"
                                 style={{
                                     width: '100%',
@@ -853,7 +855,11 @@ function ReportPage() {
                                     fontSize: '0.95rem',
                                     lineHeight: '1.6',
                                     resize: 'vertical',
-                                    fontFamily: 'inherit'
+                                    fontFamily: 'inherit',
+                                    position: 'relative',
+                                    zIndex: 10,
+                                    boxSizing: 'border-box',
+                                    WebkitAppearance: 'none'
                                 }}
                             />
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.75rem' }}>
