@@ -1333,7 +1333,7 @@ router.get('/report/transaction-summary', (req, res) => {
 
 // 장비 입출고 현황 조회 (현재 위치 + 최근 3건 이동 경로)
 router.get('/report/equipment-status', (req, res) => {
-    const { category = 'EQUIPMENT' } = req.query;
+    const { category = 'EQUIPMENT', start_date, end_date } = req.query;
 
     // 먼저 장비 목록 조회
     const equipmentQuery = `
@@ -1486,8 +1486,18 @@ router.get('/report/equipment-status', (req, res) => {
                 };
             });
 
+            // 날짜 필터 적용 (start_date, end_date가 있으면 해당 기간 내 이동 기록이 있는 장비만)
+            let filteredItems = items;
+            if (start_date && end_date) {
+                filteredItems = items.filter(item => {
+                    if (!item.movement_date) return false;
+                    const moveDate = item.movement_date.split('T')[0].split(' ')[0];
+                    return moveDate >= start_date && moveDate <= end_date;
+                });
+            }
+
             // 최근 이동일 기준 정렬
-            items.sort((a, b) => {
+            filteredItems.sort((a, b) => {
                 const dateA = a.movement_date ? new Date(a.movement_date) : new Date(0);
                 const dateB = b.movement_date ? new Date(b.movement_date) : new Date(0);
                 return dateB - dateA;
@@ -1495,7 +1505,7 @@ router.get('/report/equipment-status', (req, res) => {
 
             res.json({
                 category,
-                items
+                items: filteredItems
             });
         });
     });

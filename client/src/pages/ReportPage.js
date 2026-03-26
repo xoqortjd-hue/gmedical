@@ -281,7 +281,7 @@ function ReportPage() {
             const { start_date, end_date } = getDateRange();
             const [transRes, equipRes, salesRes] = await Promise.all([
                 axios.get(`/api/lending/report/transaction-summary?period=${period}&start_date=${start_date}&end_date=${end_date}`),
-                axios.get('/api/lending/report/equipment-status?category=EQUIPMENT'),
+                axios.get(`/api/lending/report/equipment-status?category=EQUIPMENT&start_date=${start_date}&end_date=${end_date}`),
                 axios.get('/api/lending/report/sales-status')
             ]);
             setTransactionData(transRes.data);
@@ -528,10 +528,6 @@ function ReportPage() {
             <style dangerouslySetInnerHTML={{ __html: printStyles }} />
 
             <div className="page-header no-print">
-                {/* 테스트: 이 입력란에 타이핑이 되는지 확인 */}
-                <div style={{ padding: '0.5rem', background: '#fef3c7', borderRadius: '8px', marginBottom: '0.5rem' }}>
-                    <input type="text" placeholder="테스트: 여기에 타이핑해보세요" style={{ width: '100%', padding: '0.5rem', fontSize: '1rem', border: '2px solid #f59e0b', borderRadius: '4px' }} />
-                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <h1>📊 리포트 - 장비 관리 보고서</h1>
@@ -540,6 +536,34 @@ function ReportPage() {
                     <button onClick={handlePrint} className="btn btn-primary" style={{ fontSize: '1rem', padding: '0.75rem 1.5rem' }}>
                         🖨️ 인쇄하기
                     </button>
+                </div>
+
+                {/* 특이사항 편집 (page-header 안에서 동작 보장) */}
+                <div style={{ marginTop: '1rem', padding: '1rem', background: 'white', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <strong>📝 특이사항</strong>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', color: '#475569', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={printSections.note} onChange={() => togglePrintSection('note')} style={{ width: '14px', height: '14px' }} />
+                            인쇄 포함
+                        </label>
+                    </div>
+                    <textarea
+                        value={reportNote}
+                        onChange={(e) => setReportNote(e.target.value)}
+                        placeholder="주간 보고 특이사항을 입력하세요. (예: ZENIUS MIS#5 신규 등록, ILIAD SCREW#3 폐기 처리 등)"
+                        style={{
+                            width: '100%', minHeight: '100px', padding: '0.75rem',
+                            border: '1px solid #d1d5db', borderRadius: '8px',
+                            fontSize: '0.95rem', lineHeight: '1.6', resize: 'vertical',
+                            fontFamily: 'inherit', boxSizing: 'border-box'
+                        }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' }}>
+                        <button onClick={saveReportNote} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}>
+                            💾 저장
+                        </button>
+                        {noteSaved && <span style={{ color: '#10b981', fontSize: '0.85rem' }}>저장되었습니다</span>}
+                    </div>
                 </div>
             </div>
 
@@ -838,52 +862,6 @@ function ReportPage() {
                         )}
                     </div>
 
-                    {/* 특이사항 입력 */}
-                    <div className="report-card">
-                        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            📝 특이사항
-                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 'normal', color: '#475569', cursor: 'pointer' }}>
-                                <input type="checkbox" checked={printSections.note} onChange={() => togglePrintSection('note')} style={{ width: '16px', height: '16px' }} />
-                                인쇄 포함
-                            </label>
-                        </h2>
-                        <div className="no-print" style={{ padding: '1rem' }}>
-                            {/* 현재 내용 표시 */}
-                            <div style={{
-                                padding: '0.75rem',
-                                border: '1px solid #d1d5db',
-                                borderRadius: '8px',
-                                minHeight: '60px',
-                                background: '#f9fafb',
-                                whiteSpace: 'pre-wrap',
-                                fontSize: '0.95rem',
-                                lineHeight: '1.6',
-                                color: reportNote.trim() ? '#1f2937' : '#9ca3af'
-                            }}>
-                                {reportNote.trim() || '특이사항이 없습니다. 편집 버튼을 눌러 작성하세요.'}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.75rem' }}>
-                                <button
-                                    onClick={() => { setEditingNote(reportNote); setShowNoteModal(true); }}
-                                    className="btn btn-primary"
-                                    style={{ padding: '0.5rem 1.2rem', fontSize: '0.9rem' }}
-                                >
-                                    ✏️ 편집
-                                </button>
-                                {noteSaved && (
-                                    <span style={{ color: '#10b981', fontSize: '0.9rem', fontWeight: '500' }}>
-                                        저장되었습니다
-                                    </span>
-                                )}
-                                {reportNote.trim() && (
-                                    <span style={{ color: '#6b7280', fontSize: '0.85rem', marginLeft: 'auto' }}>
-                                        인쇄 시 특이사항란에 출력됩니다
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
                     {/* 수리 현황 */}
                     {repairData.length > 0 && (
                         <div className="report-card">
@@ -1003,63 +981,6 @@ function ReportPage() {
                         )}
                     </div>
 
-                </div>
-            )}
-
-            {/* 특이사항 편집 모달 */}
-            {showNoteModal && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(0,0,0,0.5)', zIndex: 9999,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
-                }} onClick={(e) => { if (e.target === e.currentTarget) setShowNoteModal(false); }}>
-                    <div style={{
-                        background: 'white', borderRadius: '16px', width: '100%', maxWidth: '600px',
-                        maxHeight: '80vh', padding: '1.5rem'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                            <h3 style={{ margin: 0 }}>📝 특이사항 편집</h3>
-                            <button onClick={() => setShowNoteModal(false)} style={{
-                                background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#9ca3af'
-                            }}>✕</button>
-                        </div>
-                        <textarea
-                            value={editingNote}
-                            onChange={(e) => setEditingNote(e.target.value)}
-                            autoFocus
-                            placeholder="주간 보고 특이사항을 입력하세요."
-                            style={{
-                                width: '100%', minHeight: '200px', padding: '0.75rem',
-                                border: '2px solid #6366f1', borderRadius: '8px',
-                                fontSize: '1rem', lineHeight: '1.6', resize: 'vertical',
-                                fontFamily: 'inherit', boxSizing: 'border-box'
-                            }}
-                        />
-                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-                            <button onClick={async () => {
-                                setReportNote(editingNote);
-                                setShowNoteModal(false);
-                                // 바로 저장
-                                if (transactionData?.start_date && transactionData?.end_date) {
-                                    try {
-                                        await axios.post('/api/lending/report/note', {
-                                            start_date: transactionData.start_date,
-                                            end_date: transactionData.end_date,
-                                            note: editingNote
-                                        });
-                                        setNoteSaved(true);
-                                        setTimeout(() => setNoteSaved(false), 2000);
-                                    } catch (e) { console.error(e); }
-                                }
-                            }} className="btn btn-primary" style={{ padding: '0.6rem 1.5rem', fontSize: '1rem' }}>
-                                💾 저장
-                            </button>
-                            <button onClick={() => setShowNoteModal(false)}
-                                className="btn btn-secondary" style={{ padding: '0.6rem 1.5rem', fontSize: '1rem' }}>
-                                취소
-                            </button>
-                        </div>
-                    </div>
                 </div>
             )}
 
