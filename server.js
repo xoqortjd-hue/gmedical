@@ -213,6 +213,20 @@ app.post('/api/repairs', (req, res) => {
     );
 });
 
+// 수리 정보 수정
+app.put('/api/repairs/:id', (req, res) => {
+    const { product_name, repair_company, issue_description, requested_by, notes } = req.body;
+    db.run(`UPDATE repair_records SET product_name = COALESCE(?, product_name), repair_company = COALESCE(?, repair_company),
+        issue_description = COALESCE(?, issue_description), requested_by = COALESCE(?, requested_by),
+        notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [product_name, repair_company, issue_description, requested_by, notes, req.params.id],
+        function(err) {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ success: true });
+        }
+    );
+});
+
 // 수리 상태 변경
 app.put('/api/repairs/:id/status', (req, res) => {
     const { status, note, logged_by, photo_url } = req.body;

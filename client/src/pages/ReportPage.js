@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import '../styles/main.css';
 
@@ -99,6 +100,7 @@ const printStyles = `
 `;
 
 function ReportPage() {
+    const navigate = useNavigate();
     const [period, setPeriod] = useState('weekly');
     const [dateOffset, setDateOffset] = useState(0); // 0=현재, -1=이전, -2=그 이전...
     const [transactionData, setTransactionData] = useState(null);
@@ -888,7 +890,9 @@ function ReportPage() {
                                             const days = Math.floor((new Date() - new Date(r.requested_date)) / (1000*60*60*24));
                                             const statusLabels = { REQUESTED:'의뢰접수', SENT:'택배발송', IN_REPAIR:'수리중', RETURNED:'회수' };
                                             return (
-                                                <tr key={r.id}>
+                                                <tr key={r.id} onClick={() => navigate('/mobile/sales/repair')}
+                                                    style={{ cursor: 'pointer' }}
+                                                    title="클릭하여 수리 관리 페이지로 이동">
                                                     <td><strong>{r.product_name}</strong></td>
                                                     <td style={{ textAlign: 'center' }}>{statusLabels[r.status] || r.status}</td>
                                                     <td>{r.repair_company || '-'}</td>

@@ -35,6 +35,10 @@ function RepairManagementPage() {
     const [newForm, setNewForm] = useState({ product_name: '', repair_company: '', issue_description: '', requested_by: '', notes: '' });
     const [newPhotos, setNewPhotos] = useState([]);
 
+    // 수정 모드
+    const [editMode, setEditMode] = useState(false);
+    const [editForm, setEditForm] = useState({});
+
     // 상태 변경/로그 추가
     const [logNote, setLogNote] = useState('');
     const [logPhotos, setLogPhotos] = useState([]);
@@ -142,7 +146,22 @@ function RepairManagementPage() {
             setLogNote('');
             setLogPhotos([]);
             setLogBy('');
+            setEditMode(false);
         } catch (e) { console.error(e); }
+    };
+
+    // 수리 정보 수정 저장
+    const handleEditSave = async () => {
+        if (!showDetailModal) return;
+        setProcessing(true);
+        try {
+            await axios.put(`/api/repairs/${showDetailModal.id}`, editForm);
+            setMessage('✅ 수정되었습니다');
+            setEditMode(false);
+            await openDetail({ id: showDetailModal.id });
+            fetchRepairs();
+        } catch (e) { setMessage('❌ 수정 실패'); }
+        finally { setProcessing(false); setTimeout(() => setMessage(''), 2000); }
     };
 
     // 상태 변경
@@ -422,12 +441,63 @@ function RepairManagementPage() {
                             ))}
                         </div>
 
-                        {/* 정보 */}
+                        {/* 정보 (읽기/수정 모드) */}
                         <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.85rem' }}>
-                            <div>사유: {showDetailModal.issue_description || '-'}</div>
-                            <div>수리업체: {showDetailModal.repair_company || '-'}</div>
-                            <div>의뢰자: {showDetailModal.requested_by || '-'}</div>
-                            <div>경과: D+{getDaysElapsed(showDetailModal.requested_date)}</div>
+                            {editMode ? (
+                                <>
+                                    <div style={{ marginBottom: '0.4rem' }}>
+                                        <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>장비명</label>
+                                        <input value={editForm.product_name || ''} onChange={e => setEditForm(p => ({ ...p, product_name: e.target.value }))}
+                                            style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                                    </div>
+                                    <div style={{ marginBottom: '0.4rem' }}>
+                                        <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>사유</label>
+                                        <textarea value={editForm.issue_description || ''} onChange={e => setEditForm(p => ({ ...p, issue_description: e.target.value }))}
+                                            style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '0.85rem', minHeight: '60px', boxSizing: 'border-box' }} />
+                                    </div>
+                                    <div style={{ marginBottom: '0.4rem' }}>
+                                        <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>수리업체</label>
+                                        <input value={editForm.repair_company || ''} onChange={e => setEditForm(p => ({ ...p, repair_company: e.target.value }))}
+                                            style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                                    </div>
+                                    <div style={{ marginBottom: '0.4rem' }}>
+                                        <label style={{ fontSize: '0.75rem', color: '#6b7280' }}>비고</label>
+                                        <input value={editForm.notes || ''} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))}
+                                            style={{ width: '100%', padding: '0.4rem', borderRadius: '4px', border: '1px solid #d1d5db', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                        <button onClick={handleEditSave} disabled={processing} style={{
+                                            padding: '0.4rem 1rem', borderRadius: '6px', border: 'none',
+                                            background: '#10b981', color: 'white', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer'
+                                        }}>💾 저장</button>
+                                        <button onClick={() => setEditMode(false)} style={{
+                                            padding: '0.4rem 1rem', borderRadius: '6px', border: '1px solid #d1d5db',
+                                            background: 'white', fontSize: '0.8rem', cursor: 'pointer'
+                                        }}>취소</button>
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div>사유: {showDetailModal.issue_description || '-'}</div>
+                                    <div>수리업체: {showDetailModal.repair_company || '-'}</div>
+                                    <div>의뢰자: {showDetailModal.requested_by || '-'}</div>
+                                    {showDetailModal.notes && <div>비고: {showDetailModal.notes}</div>}
+                                    <div>경과: D+{getDaysElapsed(showDetailModal.requested_date)}</div>
+                                    <button onClick={() => {
+                                        setEditForm({
+                                            product_name: showDetailModal.product_name,
+                                            issue_description: showDetailModal.issue_description,
+                                            repair_company: showDetailModal.repair_company,
+                                            notes: showDetailModal.notes
+                                        });
+                                        setEditMode(true);
+                                    }} style={{
+                                        marginTop: '0.5rem', padding: '0.3rem 0.8rem', borderRadius: '6px',
+                                        border: '1px solid #d1d5db', background: 'white', fontSize: '0.75rem',
+                                        cursor: 'pointer', color: '#6366f1'
+                                    }}>✏️ 수정</button>
+                                </>
+                            )}
                         </div>
 
                         {/* 다음 단계 버튼 */}
