@@ -470,9 +470,14 @@ function ReportPage() {
         `);
         printWindow.document.close();
         printWindow.focus();
+        // 인쇄 완료/취소 후 포커스 복귀
+        printWindow.onafterprint = () => {
+            printWindow.close();
+            window.focus();
+        };
         printWindow.print();
-        // 인쇄 후 원래 창으로 포커스 복귀
-        setTimeout(() => { window.focus(); }, 500);
+        // fallback: onafterprint 미지원 브라우저
+        setTimeout(() => { window.focus(); }, 1000);
     };
 
     // 날짜 포맷 (MM-DD)
@@ -948,20 +953,39 @@ function ReportPage() {
                                             </span>
                                         </div>
                                         <div className="equipment-items-desktop">
-                                            {group.items.map(item => (
+                                            {group.items.map(item => {
+                                                const isConsigned = item.ownership === 'CONSIGNED';
+                                                const badgeColor = isConsigned
+                                                    ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
+                                                    : (item.status === 'inbound' ? '#4caf50' : '#f44336');
+                                                const bgColor = isConsigned
+                                                    ? (item.status === 'inbound' ? '#eff6ff' : '#fff7ed')
+                                                    : (item.status === 'inbound' ? '#e8f5e9' : '#ffebee');
+                                                return (
                                                 <div
                                                     key={item.lending_item_id}
-                                                    className={`equipment-item-desktop ${item.status}`}
+                                                    className="equipment-item-desktop"
+                                                    style={{ background: bgColor }}
                                                 >
                                                     <div className="item-name-desktop">{item.product_name}</div>
-                                                    <span className={`status-badge-desktop ${item.status}`}>
+                                                    <span className="status-badge-desktop" style={{ background: badgeColor, color: 'white' }}>
                                                         {item.status === 'inbound' ? '입고' : '출고'}
                                                     </span>
                                                     {item.status === 'outbound' && (
                                                         <div className="item-location-desktop">{item.hospital_name}</div>
                                                     )}
+                                                    <button className="no-print" onClick={async () => {
+                                                        const newOwn = isConsigned ? 'OWN' : 'CONSIGNED';
+                                                        try { await axios.put(`/api/products/${item.product_id || item.lending_item_id}/ownership`, { ownership: newOwn }); fetchReportData(); } catch(e) {}
+                                                    }} style={{
+                                                        marginTop: '2px', padding: '1px 5px', borderRadius: '3px',
+                                                        border: 'none', cursor: 'pointer', fontSize: '0.55rem', fontWeight: '600',
+                                                        background: isConsigned ? '#fbbf24' : '#e2e8f0',
+                                                        color: isConsigned ? '#92400e' : '#64748b'
+                                                    }}>{isConsigned ? '타사' : '자사'}</button>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 ))}
