@@ -136,7 +136,7 @@ function RepairManagementPage() {
             setShowDetailModal(res.data);
             setDetailLogs(res.data.logs || []);
             setLogNote('');
-            setLogPhoto(null);
+            setLogPhotos([]);
             setLogBy('');
         } catch (e) { console.error(e); }
     };
