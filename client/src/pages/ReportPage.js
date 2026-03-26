@@ -361,13 +361,20 @@ function ReportPage() {
                         <span>입고 <span style="color:#10b981;">${group.inboundCount}</span> / 출고 <span style="color:#ef4444;">${group.outboundCount}</span></span>
                     </div>
                     <div class="equipment-items">
-                        ${group.items.map(item => `
-                            <div class="equipment-item ${item.status}">
+                        ${group.items.map(item => {
+                            const isConsigned = item.ownership === 'CONSIGNED';
+                            const bgColor = isConsigned
+                                ? (item.status === 'inbound' ? '#eff6ff' : '#fff7ed')
+                                : (item.status === 'inbound' ? '#e8f5e9' : '#ffebee');
+                            const badgeBg = isConsigned
+                                ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
+                                : (item.status === 'inbound' ? '#4caf50' : '#f44336');
+                            return `<div class="equipment-item" style="background:${bgColor};">
                                 <div style="font-weight:600;font-size:10px;">${item.product_name}</div>
-                                <span class="status-badge ${item.status}">${item.status === 'inbound' ? '입고' : '출고'}</span>
+                                <span class="status-badge" style="background:${badgeBg};color:white;">${item.status === 'inbound' ? '입고' : '출고'}</span>
                                 ${item.status === 'outbound' ? `<div style="font-size:9px;color:#666;">${item.hospital_name}</div>` : ''}
-                            </div>
-                        `).join('')}
+                            </div>`;
+                        }).join('')}
                     </div>
                 </div>
             `).join('');
@@ -449,6 +456,12 @@ function ReportPage() {
                 ${printSections.sales ? `
                 <div class="section">
                     <div class="section-header">📋 영업팀 장비 입출고 현황판 (입고 ${salesStatusData?.summary?.inbound_count || 0} / 출고 ${salesStatusData?.summary?.outbound_count || 0})</div>
+                    <div style="padding:6px 10px;font-size:9px;color:#666;border-bottom:1px solid #eee;display:flex;gap:12px;">
+                        <span><span style="display:inline-block;width:10px;height:10px;background:#4caf50;border-radius:2px;"></span> 자사 입고</span>
+                        <span><span style="display:inline-block;width:10px;height:10px;background:#f44336;border-radius:2px;"></span> 자사 출고</span>
+                        <span><span style="display:inline-block;width:10px;height:10px;background:#3b82f6;border-radius:2px;"></span> 타사 입고</span>
+                        <span><span style="display:inline-block;width:10px;height:10px;background:#f97316;border-radius:2px;"></span> 타사 출고</span>
+                    </div>
                     ${salesGridHtml}
                 </div>
                 ` : ''}

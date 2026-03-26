@@ -112,6 +112,23 @@ db.serialize(() => {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(period_start, period_end)
     )`);
+
+    // products 테이블에 ownership 컬럼 추가 (기존 테이블 마이그레이션)
+    db.run(`ALTER TABLE products ADD COLUMN ownership TEXT DEFAULT 'OWN'`, (err) => {
+        // 이미 컬럼이 있으면 에러 무시
+    });
+});
+
+// ===== 장비 소유 구분 API =====
+app.put('/api/products/:id/ownership', (req, res) => {
+    const { ownership } = req.body;
+    if (!['OWN', 'CONSIGNED'].includes(ownership)) {
+        return res.status(400).json({ error: '유효하지 않은 구분입니다 (OWN 또는 CONSIGNED)' });
+    }
+    db.run('UPDATE products SET ownership = ? WHERE id = ?', [ownership, req.params.id], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true });
+    });
 });
 
 // ===== 담당자 API =====

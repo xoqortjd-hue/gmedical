@@ -150,6 +150,16 @@ function SalesEquipmentQuickPage() {
         });
     };
 
+    // 자사/타사 토글
+    const toggleOwnership = async (item, e) => {
+        e.stopPropagation();
+        const newOwnership = item.ownership === 'CONSIGNED' ? 'OWN' : 'CONSIGNED';
+        try {
+            await axios.put(`/api/products/${item.product_id}/ownership`, { ownership: newOwnership });
+            fetchEquipmentStatus();
+        } catch (err) { console.error('소유 구분 변경 실패:', err); }
+    };
+
     // 일괄 출고 모달 열기
     const openOutboundModal = () => {
         if (selectedItems.length === 0) return;
@@ -404,12 +414,16 @@ function SalesEquipmentQuickPage() {
                                         })
                                         .map(item => {
                                             const isInbound = item.hospital_name === '부산사무실' || item.hospital_id === 2;
+                                            const isConsigned = item.ownership === 'CONSIGNED';
                                             const isSelected = selectedItems.some(i => i.id === item.id);
+                                            const cardColors = isConsigned
+                                                ? { border: isInbound ? '#bfdbfe' : '#fed7aa', bg: isInbound ? '#eff6ff' : '#fff7ed', badge: isInbound ? '#3b82f6' : '#f97316' }
+                                                : { border: isInbound ? '#d1fae5' : '#fecaca', bg: isInbound ? '#f0fdf4' : '#fef2f2', badge: isInbound ? '#10b981' : '#ef4444' };
                                             return (
                                                 <div key={item.id} onClick={() => handleItemClick(item)} style={{
                                                     padding: '0.75rem', borderRadius: '10px',
-                                                    border: isSelected ? '2px solid #6366f1' : `1px solid ${isInbound ? '#d1fae5' : '#fecaca'}`,
-                                                    background: isSelected ? '#eef2ff' : isInbound ? '#f0fdf4' : '#fef2f2',
+                                                    border: isSelected ? '2px solid #6366f1' : `1px solid ${cardColors.border}`,
+                                                    background: isSelected ? '#eef2ff' : cardColors.bg,
                                                     cursor: 'pointer', textAlign: 'center',
                                                     transition: 'transform 0.15s ease, box-shadow 0.15s ease',
                                                     boxShadow: isSelected ? '0 0 0 2px rgba(99,102,241,0.3)' : 'none',
@@ -429,16 +443,22 @@ function SalesEquipmentQuickPage() {
                                                     <span style={{
                                                         display: 'inline-block', padding: '2px 8px', borderRadius: '4px',
                                                         fontSize: '0.7rem', fontWeight: '700', color: 'white',
-                                                        background: isInbound ? '#10b981' : '#ef4444'
+                                                        background: cardColors.badge
                                                     }}>
                                                         {isInbound ? '입고' : '출고'}
                                                     </span>
                                                     {!isInbound && item.hospital_name && (
                                                         <div style={{ fontSize: '0.65rem', color: '#6b7280', marginTop: '0.3rem' }}>{item.hospital_name}</div>
                                                     )}
-                                                    {isInbound && (
+                                                    {isInbound && !isConsigned && (
                                                         <div style={{ fontSize: '0.6rem', color: '#6366f1', marginTop: '0.3rem' }}>탭하여 선택</div>
                                                     )}
+                                                    <button onClick={(e) => toggleOwnership(item, e)} style={{
+                                                        marginTop: '0.3rem', padding: '1px 6px', borderRadius: '3px',
+                                                        border: 'none', cursor: 'pointer', fontSize: '0.55rem', fontWeight: '600',
+                                                        background: isConsigned ? '#fbbf24' : '#e2e8f0',
+                                                        color: isConsigned ? '#92400e' : '#64748b'
+                                                    }}>{isConsigned ? '타사' : '자사'}</button>
                                                 </div>
                                             );
                                         })}

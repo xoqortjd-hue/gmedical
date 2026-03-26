@@ -90,9 +90,11 @@ function SalesStatusDashboard() {
 
                     latestByName[name] = {
                         id: item.id,
+                        product_id: item.product_id,
                         name: item.product_name,
                         status: isInbound ? 'inbound' : 'outbound',
                         hospital: item.hospital_name,
+                        ownership: item.ownership || 'OWN',
                         lastUpdated: lastDate
                     };
                 }
@@ -402,7 +404,9 @@ function SalesStatusDashboard() {
                                                         style={{
                                                             display: 'inline-block',
                                                             padding: '0.2rem 0.6rem',
-                                                            background: item.status === 'inbound' ? '#10b981' : '#ef4444',
+                                                            background: item.ownership === 'CONSIGNED'
+                                                                ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
+                                                                : (item.status === 'inbound' ? '#10b981' : '#ef4444'),
                                                             color: 'white',
                                                             borderRadius: '4px',
                                                             fontSize: '0.7rem',
@@ -413,6 +417,20 @@ function SalesStatusDashboard() {
                                                     >
                                                         {item.status === 'inbound' ? '입고' : '출고'}
                                                     </button>
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            const newOwn = item.ownership === 'CONSIGNED' ? 'OWN' : 'CONSIGNED';
+                                                            try { await axios.put(`/api/products/${item.product_id}/ownership`, { ownership: newOwn }); fetchEquipmentStatus(); } catch(err) {}
+                                                        }}
+                                                        style={{
+                                                            display: 'block', margin: '0.2rem auto 0', padding: '1px 5px',
+                                                            borderRadius: '3px', border: 'none', cursor: 'pointer',
+                                                            fontSize: '0.5rem', fontWeight: '600',
+                                                            background: item.ownership === 'CONSIGNED' ? '#fbbf24' : '#e2e8f0',
+                                                            color: item.ownership === 'CONSIGNED' ? '#92400e' : '#64748b'
+                                                        }}
+                                                    >{item.ownership === 'CONSIGNED' ? '타사' : '자사'}</button>
                                                 </>
                                             )}
                                         </div>

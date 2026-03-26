@@ -34,6 +34,7 @@ router.get('/items', (req, res) => {
             p.category,
             p.notes as product_notes,
             p.repair_history as product_repair_history,
+            COALESCE(p.ownership, 'OWN') as ownership,
             h.name as hospital_name,
             h.code as hospital_code,
             c.name as channel_name,
@@ -1512,7 +1513,8 @@ router.get('/report/sales-status', (req, res) => {
             h.name as hospital_name,
             li.deploy_date,
             lm.moved_by,
-            CASE WHEN h.id = 2 THEN 'inbound' ELSE 'outbound' END as status
+            CASE WHEN h.id = 2 THEN 'inbound' ELSE 'outbound' END as status,
+            COALESCE(p.ownership, 'OWN') as ownership
         FROM products p
         JOIN lending_items li ON p.id = li.product_id AND li.status = 'ACTIVE'
         JOIN hospitals h ON li.hospital_id = h.id
