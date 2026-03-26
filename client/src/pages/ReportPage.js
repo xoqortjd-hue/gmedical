@@ -143,6 +143,12 @@ function ReportPage() {
         setPrintSections(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
+    // 영업팀 현황판 그룹별 인쇄 제외
+    const [excludedGroups, setExcludedGroups] = useState([]);
+    const toggleGroupExclusion = (baseName) => {
+        setExcludedGroups(prev => prev.includes(baseName) ? prev.filter(g => g !== baseName) : [...prev, baseName]);
+    };
+
     useEffect(() => {
         fetchReportData();
     }, [period, dateOffset]);
@@ -348,7 +354,7 @@ function ReportPage() {
         // 영업팀 현황판 HTML 생성
         let salesGridHtml = '';
         if (salesStatusData && salesStatusData.groups.length > 0) {
-            salesGridHtml = salesStatusData.groups.map(group => `
+            salesGridHtml = salesStatusData.groups.filter(group => !excludedGroups.includes(group.baseName)).map(group => `
                 <div class="equipment-group">
                     <div class="group-header">
                         <span style="font-weight:bold;">${group.baseName}</span>
@@ -424,13 +430,6 @@ function ReportPage() {
                 </div>
                 ` : ''}
 
-                ${printSections.sales ? `
-                <div class="section">
-                    <div class="section-header">📋 영업팀 장비 입출고 현황판 (입고 ${salesStatusData?.summary?.inbound_count || 0} / 출고 ${salesStatusData?.summary?.outbound_count || 0})</div>
-                    ${salesGridHtml}
-                </div>
-                ` : ''}
-
                 ${printSections.repair && repairData.length > 0 ? `
                 <div class="section">
                     <div class="section-header">🔧 수리 현황 (${repairData.length}건 진행중)</div>
@@ -444,6 +443,13 @@ function ReportPage() {
                             }).join('')}
                         </tbody>
                     </table>
+                </div>
+                ` : ''}
+
+                ${printSections.sales ? `
+                <div class="section">
+                    <div class="section-header">📋 영업팀 장비 입출고 현황판 (입고 ${salesStatusData?.summary?.inbound_count || 0} / 출고 ${salesStatusData?.summary?.outbound_count || 0})</div>
+                    ${salesGridHtml}
                 </div>
                 ` : ''}
             </body>
@@ -854,60 +860,6 @@ function ReportPage() {
                         </div>
                     </div>
 
-                    {/* 영업팀 장비 입출고 현황판 */}
-                    <div className="report-card">
-                        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>
-                                📋 영업팀 장비 입출고 현황판
-                                {salesStatusData && (
-                                    <span style={{ fontSize: '0.9rem', fontWeight: 'normal', marginLeft: '1rem', color: '#666' }}>
-                                        입고 <span style={{ color: '#10b981', fontWeight: 'bold' }}>{salesStatusData.summary.inbound_count}</span> /
-                                        출고 <span style={{ color: '#ef4444', fontWeight: 'bold' }}> {salesStatusData.summary.outbound_count}</span>
-                                    </span>
-                                )}
-                            </span>
-                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 'normal', color: '#475569', cursor: 'pointer' }}>
-                                <input type="checkbox" checked={printSections.sales} onChange={() => togglePrintSection('sales')} style={{ width: '16px', height: '16px' }} />
-                                인쇄 포함
-                            </label>
-                        </h2>
-                        {salesStatusData && salesStatusData.groups.length > 0 ? (
-                            <div className="sales-grid-desktop">
-                                {salesStatusData.groups.map(group => (
-                                    <div key={group.baseName} className="equipment-group-desktop">
-                                        <div className="group-header-desktop">
-                                            <span className="group-name-desktop">{group.baseName}</span>
-                                            <span className="group-stats-desktop">
-                                                <span style={{ color: '#10b981' }}>입고 {group.inboundCount}</span>
-                                                <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>출고 {group.outboundCount}</span>
-                                            </span>
-                                        </div>
-                                        <div className="equipment-items-desktop">
-                                            {group.items.map(item => (
-                                                <div
-                                                    key={item.lending_item_id}
-                                                    className={`equipment-item-desktop ${item.status}`}
-                                                >
-                                                    <div className="item-name-desktop">{item.product_name}</div>
-                                                    <span className={`status-badge-desktop ${item.status}`}>
-                                                        {item.status === 'inbound' ? '입고' : '출고'}
-                                                    </span>
-                                                    {item.status === 'outbound' && (
-                                                        <div className="item-location-desktop">{item.hospital_name}</div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="empty-state">
-                                <p>등록된 장비가 없습니다.</p>
-                            </div>
-                        )}
-                    </div>
-
                     {/* 수리 현황 */}
                     {repairData.length > 0 && (
                         <div className="report-card">
@@ -948,6 +900,66 @@ function ReportPage() {
                             </div>
                         </div>
                     )}
+
+                    {/* 영업팀 장비 입출고 현황판 */}
+                    <div className="report-card">
+                        <h2 style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>
+                                📋 영업팀 장비 입출고 현황판
+                                {salesStatusData && (
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 'normal', marginLeft: '1rem', color: '#666' }}>
+                                        입고 <span style={{ color: '#10b981', fontWeight: 'bold' }}>{salesStatusData.summary.inbound_count}</span> /
+                                        출고 <span style={{ color: '#ef4444', fontWeight: 'bold' }}> {salesStatusData.summary.outbound_count}</span>
+                                    </span>
+                                )}
+                            </span>
+                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', fontWeight: 'normal', color: '#475569', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={printSections.sales} onChange={() => togglePrintSection('sales')} style={{ width: '16px', height: '16px' }} />
+                                인쇄 포함
+                            </label>
+                        </h2>
+                        {salesStatusData && salesStatusData.groups.length > 0 ? (
+                            <div className="sales-grid-desktop">
+                                {salesStatusData.groups.map(group => (
+                                    <div key={group.baseName} className="equipment-group-desktop">
+                                        <div className="group-header-desktop" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                                                <input type="checkbox" checked={!excludedGroups.includes(group.baseName)}
+                                                    onChange={() => toggleGroupExclusion(group.baseName)}
+                                                    style={{ width: '14px', height: '14px' }} />
+                                            </label>
+                                            <span className="group-name-desktop" style={{ flex: 1, opacity: excludedGroups.includes(group.baseName) ? 0.4 : 1 }}>{group.baseName}</span>
+                                            <span className="group-stats-desktop">
+                                                <span style={{ color: '#10b981' }}>입고 {group.inboundCount}</span>
+                                                <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>출고 {group.outboundCount}</span>
+                                            </span>
+                                        </div>
+                                        <div className="equipment-items-desktop">
+                                            {group.items.map(item => (
+                                                <div
+                                                    key={item.lending_item_id}
+                                                    className={`equipment-item-desktop ${item.status}`}
+                                                >
+                                                    <div className="item-name-desktop">{item.product_name}</div>
+                                                    <span className={`status-badge-desktop ${item.status}`}>
+                                                        {item.status === 'inbound' ? '입고' : '출고'}
+                                                    </span>
+                                                    {item.status === 'outbound' && (
+                                                        <div className="item-location-desktop">{item.hospital_name}</div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="empty-state">
+                                <p>등록된 장비가 없습니다.</p>
+                            </div>
+                        )}
+                    </div>
+
                 </div>
             )}
 
