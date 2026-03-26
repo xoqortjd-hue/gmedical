@@ -143,6 +143,10 @@ function ReportPage() {
         setPrintSections(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
+    // 특이사항 편집 모달
+    const [showNoteModal, setShowNoteModal] = useState(false);
+    const [editingNote, setEditingNote] = useState('');
+
     // 영업팀 현황판 그룹별 인쇄 제외
     const [excludedGroups, setExcludedGroups] = useState([]);
     const toggleGroupExclusion = (baseName) => {
@@ -839,36 +843,28 @@ function ReportPage() {
                                 인쇄 포함
                             </label>
                         </h2>
-                        <div className="no-print" style={{ padding: '1rem', position: 'relative', zIndex: 5 }}>
-                            <textarea
-                                value={reportNote}
-                                onChange={(e) => setReportNote(e.target.value)}
-                                onFocus={(e) => e.target.style.outline = '2px solid #6366f1'}
-                                onBlur={(e) => e.target.style.outline = 'none'}
-                                placeholder="주간 보고 특이사항을 입력하세요. (예: ZENIUS MIS#5 신규 등록, ILIAD SCREW#3 폐기 처리 등)"
-                                style={{
-                                    width: '100%',
-                                    minHeight: '120px',
-                                    padding: '0.75rem',
-                                    border: '1px solid #d1d5db',
-                                    borderRadius: '8px',
-                                    fontSize: '0.95rem',
-                                    lineHeight: '1.6',
-                                    resize: 'vertical',
-                                    fontFamily: 'inherit',
-                                    position: 'relative',
-                                    zIndex: 10,
-                                    boxSizing: 'border-box',
-                                    WebkitAppearance: 'none'
-                                }}
-                            />
+                        <div className="no-print" style={{ padding: '1rem' }}>
+                            {/* 현재 내용 표시 */}
+                            <div style={{
+                                padding: '0.75rem',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '8px',
+                                minHeight: '60px',
+                                background: '#f9fafb',
+                                whiteSpace: 'pre-wrap',
+                                fontSize: '0.95rem',
+                                lineHeight: '1.6',
+                                color: reportNote.trim() ? '#1f2937' : '#9ca3af'
+                            }}>
+                                {reportNote.trim() || '특이사항이 없습니다. 편집 버튼을 눌러 작성하세요.'}
+                            </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.75rem' }}>
                                 <button
-                                    onClick={saveReportNote}
+                                    onClick={() => { setEditingNote(reportNote); setShowNoteModal(true); }}
                                     className="btn btn-primary"
                                     style={{ padding: '0.5rem 1.2rem', fontSize: '0.9rem' }}
                                 >
-                                    💾 저장
+                                    ✏️ 편집
                                 </button>
                                 {noteSaved && (
                                     <span style={{ color: '#10b981', fontSize: '0.9rem', fontWeight: '500' }}>
@@ -1003,6 +999,63 @@ function ReportPage() {
                         )}
                     </div>
 
+                </div>
+            )}
+
+            {/* 특이사항 편집 모달 */}
+            {showNoteModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+                }} onClick={(e) => { if (e.target === e.currentTarget) setShowNoteModal(false); }}>
+                    <div style={{
+                        background: 'white', borderRadius: '16px', width: '100%', maxWidth: '600px',
+                        maxHeight: '80vh', padding: '1.5rem'
+                    }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h3 style={{ margin: 0 }}>📝 특이사항 편집</h3>
+                            <button onClick={() => setShowNoteModal(false)} style={{
+                                background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#9ca3af'
+                            }}>✕</button>
+                        </div>
+                        <textarea
+                            value={editingNote}
+                            onChange={(e) => setEditingNote(e.target.value)}
+                            autoFocus
+                            placeholder="주간 보고 특이사항을 입력하세요."
+                            style={{
+                                width: '100%', minHeight: '200px', padding: '0.75rem',
+                                border: '2px solid #6366f1', borderRadius: '8px',
+                                fontSize: '1rem', lineHeight: '1.6', resize: 'vertical',
+                                fontFamily: 'inherit', boxSizing: 'border-box'
+                            }}
+                        />
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                            <button onClick={async () => {
+                                setReportNote(editingNote);
+                                setShowNoteModal(false);
+                                // 바로 저장
+                                if (transactionData?.start_date && transactionData?.end_date) {
+                                    try {
+                                        await axios.post('/api/lending/report/note', {
+                                            start_date: transactionData.start_date,
+                                            end_date: transactionData.end_date,
+                                            note: editingNote
+                                        });
+                                        setNoteSaved(true);
+                                        setTimeout(() => setNoteSaved(false), 2000);
+                                    } catch (e) { console.error(e); }
+                                }
+                            }} className="btn btn-primary" style={{ padding: '0.6rem 1.5rem', fontSize: '1rem' }}>
+                                💾 저장
+                            </button>
+                            <button onClick={() => setShowNoteModal(false)}
+                                className="btn btn-secondary" style={{ padding: '0.6rem 1.5rem', fontSize: '1rem' }}>
+                                취소
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
