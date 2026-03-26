@@ -33,11 +33,11 @@ function RepairManagementPage() {
 
     // 새 의뢰 폼
     const [newForm, setNewForm] = useState({ product_name: '', repair_company: '', issue_description: '', requested_by: '', notes: '' });
-    const [newPhoto, setNewPhoto] = useState(null);
+    const [newPhotos, setNewPhotos] = useState([]);
 
     // 상태 변경/로그 추가
     const [logNote, setLogNote] = useState('');
-    const [logPhoto, setLogPhoto] = useState(null);
+    const [logPhotos, setLogPhotos] = useState([]);
     const [logBy, setLogBy] = useState('');
     const [processing, setProcessing] = useState(false);
     const [message, setMessage] = useState('');
@@ -46,8 +46,10 @@ function RepairManagementPage() {
     const [alerts, setAlerts] = useState([]);
     const [showAlerts, setShowAlerts] = useState(false);
 
-    const photoRef = useRef(null);
-    const logPhotoRef = useRef(null);
+    const photoCameraRef = useRef(null);
+    const photoAlbumRef = useRef(null);
+    const logCameraRef = useRef(null);
+    const logAlbumRef = useRef(null);
 
     useEffect(() => {
         fetchRepairs();
@@ -86,17 +88,41 @@ function RepairManagementPage() {
         reader.readAsDataURL(file);
     });
 
+    // 사진 촬영/선택 핸들러 (다중)
+    const handlePhotos = async (e, setter) => {
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
+        try {
+            const base64Photos = [];
+            for (const file of files) {
+                base64Photos.push(await fileToBase64(file));
+            }
+            setter(prev => [...prev, ...base64Photos]);
+        } catch (error) {
+            console.error('사진 처리 실패:', error);
+        }
+        e.target.value = '';
+    };
+
     // 새 수리 의뢰 등록
     const handleNewRepair = async () => {
         if (!newForm.product_name.trim()) { setMessage('❌ 장비명을 입력해주세요'); return; }
         if (!newForm.issue_description.trim()) { setMessage('❌ 수리 사유를 입력해주세요'); return; }
         setProcessing(true);
         try {
-            await axios.post('/api/repairs', { ...newForm, photo_url: newPhoto });
+            const res = await axios.post('/api/repairs', { ...newForm, photo_url: newPhotos[0] || null });
+            // 추가 사진이 있으면 로그로 저장
+            if (newPhotos.length > 1) {
+                for (let i = 1; i < newPhotos.length; i++) {
+                    await axios.post(`/api/repairs/${res.data.id}/log`, {
+                        note: `사진 ${i + 1}`, logged_by: newForm.requested_by, photo_url: newPhotos[i]
+                    });
+                }
+            }
             setMessage('✅ 수리 의뢰가 등록되었습니다');
             setShowNewModal(false);
             setNewForm({ product_name: '', repair_company: '', issue_description: '', requested_by: '', notes: '' });
-            setNewPhoto(null);
+            setNewPhotos([]);
             fetchRepairs();
             fetchCompanies();
         } catch (e) { setMessage('❌ 등록 실패'); }
@@ -121,10 +147,16 @@ function RepairManagementPage() {
         setProcessing(true);
         try {
             await axios.put(`/api/repairs/${showDetailModal.id}/status`, {
-                status: newStatus, note: logNote, logged_by: logBy, photo_url: logPhoto
+                status: newStatus, note: logNote, logged_by: logBy, photo_url: logPhotos[0] || null
             });
+            // 추가 사진 로그
+            for (let i = 1; i < logPhotos.length; i++) {
+                await axios.post(`/api/repairs/${showDetailModal.id}/log`, {
+                    note: `사진 ${i + 1}`, logged_by: logBy, photo_url: logPhotos[i]
+                });
+            }
             setMessage(`✅ ${STATUS_LABELS[newStatus]}(으)로 변경되었습니다`);
-            setLogNote(''); setLogPhoto(null);
+            setLogNote(''); setLogPhotos([]);
             await openDetail(showDetailModal);
             fetchRepairs();
         } catch (e) { setMessage('❌ 상태 변경 실패'); }
@@ -133,13 +165,18 @@ function RepairManagementPage() {
 
     // 메모/사진 추가
     const handleAddLog = async () => {
-        if (!logNote.trim() && !logPhoto) { setMessage('❌ 메모 또는 사진을 입력해주세요'); return; }
+        if (!logNote.trim() && logPhotos.length === 0) { setMessage('❌ 메모 또는 사진을 입력해주세요'); return; }
         setProcessing(true);
         try {
             await axios.post(`/api/repairs/${showDetailModal.id}/log`, {
-                note: logNote, logged_by: logBy, photo_url: logPhoto
+                note: logNote, logged_by: logBy, photo_url: logPhotos[0] || null
             });
-            setLogNote(''); setLogPhoto(null);
+            for (let i = 1; i < logPhotos.length; i++) {
+                await axios.post(`/api/repairs/${showDetailModal.id}/log`, {
+                    note: `사진 ${i + 1}`, logged_by: logBy, photo_url: logPhotos[i]
+                });
+            }
+            setLogNote(''); setLogPhotos([]);
             await openDetail(showDetailModal);
         } catch (e) { setMessage('❌ 추가 실패'); }
         finally { setProcessing(false); }
@@ -328,11 +365,28 @@ function RepairManagementPage() {
                         <input placeholder="비고" value={newForm.notes} onChange={e => setNewForm(p => ({ ...p, notes: e.target.value }))}
                             style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid #d1d5db', marginBottom: '0.5rem', fontSize: '0.9rem', boxSizing: 'border-box' }} />
                         <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                            <button onClick={() => photoRef.current?.click()} style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f8fafc', cursor: 'pointer', fontSize: '0.85rem' }}>📸 사진</button>
-                            {newPhoto && <img src={newPhoto} alt="" style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '6px' }} />}
+                            <button onClick={() => photoCameraRef.current?.click()} style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f8fafc', cursor: 'pointer', fontSize: '0.85rem' }}>📸 촬영</button>
+                            <button onClick={() => photoAlbumRef.current?.click()} style={{ flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f8fafc', cursor: 'pointer', fontSize: '0.85rem' }}>🖼️ 앨범 (다중)</button>
                         </div>
-                        <input ref={photoRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-                            onChange={async (e) => { if (e.target.files[0]) setNewPhoto(await fileToBase64(e.target.files[0])); e.target.value = ''; }} />
+                        <input ref={photoCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                            onChange={(e) => handlePhotos(e, setNewPhotos)} />
+                        <input ref={photoAlbumRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+                            onChange={(e) => handlePhotos(e, setNewPhotos)} />
+                        {newPhotos.length > 0 && (
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                                {newPhotos.map((photo, idx) => (
+                                    <div key={idx} style={{ position: 'relative', width: '50px', height: '50px' }}>
+                                        <img src={photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '6px' }} />
+                                        <button onClick={() => setNewPhotos(prev => prev.filter((_, i) => i !== idx))} style={{
+                                            position: 'absolute', top: '-5px', right: '-5px', width: '18px', height: '18px',
+                                            borderRadius: '50%', background: '#ef4444', color: 'white', border: 'none',
+                                            fontSize: '0.6rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>✕</button>
+                                    </div>
+                                ))}
+                                <div style={{ fontSize: '0.7rem', color: '#6b7280', alignSelf: 'center' }}>{newPhotos.length}장</div>
+                            </div>
+                        )}
                         {message && <div style={{ padding: '0.5rem', borderRadius: '8px', marginBottom: '0.5rem', textAlign: 'center', fontSize: '0.85rem', color: message.startsWith('✅') ? '#10b981' : '#ef4444' }}>{message}</div>}
                         <button onClick={handleNewRepair} disabled={processing} style={{
                             width: '100%', padding: '0.8rem', borderRadius: '10px', border: 'none', background: processing ? '#9ca3af' : '#ef4444',
@@ -382,11 +436,27 @@ function RepairManagementPage() {
                                 <input placeholder="메모 (선택)" value={logNote} onChange={e => setLogNote(e.target.value)}
                                     style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid #d1d5db', marginBottom: '0.3rem', fontSize: '0.85rem', boxSizing: 'border-box' }} />
                                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.3rem' }}>
-                                    <button onClick={() => logPhotoRef.current?.click()} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f8fafc', cursor: 'pointer', fontSize: '0.8rem' }}>📸 사진</button>
-                                    {logPhoto && <img src={logPhoto} alt="" style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }} />}
+                                    <button onClick={() => logCameraRef.current?.click()} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f8fafc', cursor: 'pointer', fontSize: '0.8rem' }}>📸 촬영</button>
+                                    <button onClick={() => logAlbumRef.current?.click()} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #d1d5db', background: '#f8fafc', cursor: 'pointer', fontSize: '0.8rem' }}>🖼️ 앨범</button>
                                 </div>
-                                <input ref={logPhotoRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-                                    onChange={async (e) => { if (e.target.files[0]) setLogPhoto(await fileToBase64(e.target.files[0])); e.target.value = ''; }} />
+                                <input ref={logCameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                                    onChange={(e) => handlePhotos(e, setLogPhotos)} />
+                                <input ref={logAlbumRef} type="file" accept="image/*" multiple style={{ display: 'none' }}
+                                    onChange={(e) => handlePhotos(e, setLogPhotos)} />
+                                {logPhotos.length > 0 && (
+                                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.3rem' }}>
+                                        {logPhotos.map((photo, idx) => (
+                                            <div key={idx} style={{ position: 'relative', width: '40px', height: '40px' }}>
+                                                <img src={photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '4px' }} />
+                                                <button onClick={() => setLogPhotos(prev => prev.filter((_, i) => i !== idx))} style={{
+                                                    position: 'absolute', top: '-5px', right: '-5px', width: '16px', height: '16px',
+                                                    borderRadius: '50%', background: '#ef4444', color: 'white', border: 'none',
+                                                    fontSize: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                }}>✕</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 <button onClick={() => handleStatusChange(getNextStatus(showDetailModal.status))} disabled={processing}
                                     style={{
                                         width: '100%', padding: '0.7rem', borderRadius: '10px', border: 'none',
