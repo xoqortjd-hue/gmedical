@@ -528,6 +528,10 @@ function ReportPage() {
             <style dangerouslySetInnerHTML={{ __html: printStyles }} />
 
             <div className="page-header no-print">
+                {/* 테스트: 이 입력란에 타이핑이 되는지 확인 */}
+                <div style={{ padding: '0.5rem', background: '#fef3c7', borderRadius: '8px', marginBottom: '0.5rem' }}>
+                    <input type="text" placeholder="테스트: 여기에 타이핑해보세요" style={{ width: '100%', padding: '0.5rem', fontSize: '1rem', border: '2px solid #f59e0b', borderRadius: '4px' }} />
+                </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <h1>📊 리포트 - 장비 관리 보고서</h1>
