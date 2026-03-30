@@ -30,6 +30,7 @@ function SalesStatusDashboard() {
     const [detailLoading, setDetailLoading] = useState(false);
     const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null); // 확대 보기용 사진 인덱스
     const [touchStart, setTouchStart] = useState(null); // 터치 시작 위치
+    const [ownershipEditMode, setOwnershipEditMode] = useState(false); // 자사/타사 수정 모드
 
     // 디버그 로그
     console.log('[SalesStatusDashboard] Rendering');
@@ -392,6 +393,43 @@ function SalesStatusDashboard() {
                 </div>
             </div>
 
+            {/* 자사/타사 수정 모드 토글 */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.75rem',
+                padding: '0.5rem 0.75rem',
+                background: ownershipEditMode ? '#fef3c7' : 'white',
+                borderRadius: '8px',
+                border: ownershipEditMode ? '1px solid #f59e0b' : '1px solid #e5e7eb',
+                transition: 'all 0.2s'
+            }}>
+                <span style={{ fontSize: '0.8rem', color: ownershipEditMode ? '#92400e' : '#64748b' }}>
+                    {ownershipEditMode ? '🔓 자사/타사 수정 가능' : '🔒 자사/타사 잠금'}
+                </span>
+                <button
+                    onClick={() => setOwnershipEditMode(!ownershipEditMode)}
+                    style={{
+                        position: 'relative',
+                        width: '44px', height: '24px',
+                        borderRadius: '12px', border: 'none', cursor: 'pointer',
+                        background: ownershipEditMode ? '#f59e0b' : '#d1d5db',
+                        transition: 'background 0.2s'
+                    }}
+                >
+                    <span style={{
+                        position: 'absolute',
+                        top: '2px', left: ownershipEditMode ? '22px' : '2px',
+                        width: '20px', height: '20px',
+                        borderRadius: '50%', background: 'white',
+                        transition: 'left 0.2s',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                    }} />
+                </button>
+            </div>
+
             {/* 대시보드 그리드 */}
             {loading ? (
                 <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
@@ -502,15 +540,18 @@ function SalesStatusDashboard() {
                                                             <button
                                                                 onClick={async (e) => {
                                                                     e.stopPropagation();
+                                                                    if (!ownershipEditMode) return;
                                                                     const newOwn = item.ownership === 'CONSIGNED' ? 'OWN' : 'CONSIGNED';
                                                                     try { await axios.put(`/api/products/${item.product_id}/ownership`, { ownership: newOwn }); fetchEquipmentStatus(); } catch(err) {}
                                                                 }}
                                                                 style={{
                                                                     display: 'block', margin: '0.2rem auto 0', padding: '1px 5px',
-                                                                    borderRadius: '3px', border: 'none', cursor: 'pointer',
+                                                                    borderRadius: '3px', border: 'none',
+                                                                    cursor: ownershipEditMode ? 'pointer' : 'default',
                                                                     fontSize: '0.5rem', fontWeight: '600',
                                                                     background: item.ownership === 'CONSIGNED' ? '#fbbf24' : '#e2e8f0',
-                                                                    color: item.ownership === 'CONSIGNED' ? '#92400e' : '#64748b'
+                                                                    color: item.ownership === 'CONSIGNED' ? '#92400e' : '#64748b',
+                                                                    opacity: ownershipEditMode ? 1 : 0.6
                                                                 }}
                                                             >{item.ownership === 'CONSIGNED' ? '타사' : '자사'}</button>
                                                         </>

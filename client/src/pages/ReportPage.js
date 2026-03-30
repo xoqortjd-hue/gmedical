@@ -155,6 +155,9 @@ function ReportPage() {
         setExcludedGroups(prev => prev.includes(baseName) ? prev.filter(g => g !== baseName) : [...prev, baseName]);
     };
 
+    // 자사/타사 수정 모드
+    const [ownershipEditMode, setOwnershipEditMode] = useState(false);
+
     useEffect(() => {
         fetchReportData();
     }, [period, dateOffset]);
@@ -943,6 +946,36 @@ function ReportPage() {
                                 인쇄 포함
                             </label>
                         </h2>
+                        {/* 자사/타사 수정 모드 토글 */}
+                        <div className="no-print" style={{
+                            display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '0.5rem',
+                            padding: '0.4rem 0.75rem',
+                            background: ownershipEditMode ? '#fef3c7' : '#f9fafb',
+                            borderBottom: '1px solid #e5e7eb',
+                            transition: 'all 0.2s'
+                        }}>
+                            <span style={{ fontSize: '0.8rem', color: ownershipEditMode ? '#92400e' : '#64748b' }}>
+                                {ownershipEditMode ? '🔓 자사/타사 수정 가능' : '🔒 자사/타사 잠금'}
+                            </span>
+                            <button
+                                onClick={() => setOwnershipEditMode(!ownershipEditMode)}
+                                style={{
+                                    position: 'relative', width: '40px', height: '22px',
+                                    borderRadius: '11px', border: 'none', cursor: 'pointer',
+                                    background: ownershipEditMode ? '#f59e0b' : '#d1d5db',
+                                    transition: 'background 0.2s'
+                                }}
+                            >
+                                <span style={{
+                                    position: 'absolute', top: '2px',
+                                    left: ownershipEditMode ? '20px' : '2px',
+                                    width: '18px', height: '18px',
+                                    borderRadius: '50%', background: 'white',
+                                    transition: 'left 0.2s',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                }} />
+                            </button>
+                        </div>
                         {salesStatusData && salesStatusData.groups.length > 0 ? (
                             <div className="sales-grid-desktop">
                                 {salesStatusData.groups.map(group => (
@@ -1030,13 +1063,17 @@ function ReportPage() {
                                                                 <div className="item-location-desktop">{item.hospital_name}</div>
                                                             )}
                                                             <button className="no-print" onClick={async () => {
+                                                                if (!ownershipEditMode) return;
                                                                 const newOwn = isConsigned ? 'OWN' : 'CONSIGNED';
                                                                 try { await axios.put(`/api/products/${item.product_id || item.lending_item_id}/ownership`, { ownership: newOwn }); fetchReportData(); } catch(e) {}
                                                             }} style={{
                                                                 marginTop: '2px', padding: '1px 5px', borderRadius: '3px',
-                                                                border: 'none', cursor: 'pointer', fontSize: '0.55rem', fontWeight: '600',
+                                                                border: 'none',
+                                                                cursor: ownershipEditMode ? 'pointer' : 'default',
+                                                                fontSize: '0.55rem', fontWeight: '600',
                                                                 background: isConsigned ? '#fbbf24' : '#e2e8f0',
-                                                                color: isConsigned ? '#92400e' : '#64748b'
+                                                                color: isConsigned ? '#92400e' : '#64748b',
+                                                                opacity: ownershipEditMode ? 1 : 0.6
                                                             }}>{isConsigned ? '타사' : '자사'}</button>
                                                         </div>
                                                         );
