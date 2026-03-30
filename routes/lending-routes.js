@@ -1575,10 +1575,12 @@ router.get('/report/sales-status', (req, res) => {
                 groupedByName[baseName] = [];
             }
             groupedByName[baseName].push({
+                product_id: row.product_id,
                 product_name: row.product_name,
                 lending_item_id: row.lending_item_id,
                 hospital_name: row.hospital_name,
                 status: row.status,
+                ownership: row.ownership || 'OWN',
                 deploy_date: row.deploy_date,
                 moved_by: row.moved_by
             });
