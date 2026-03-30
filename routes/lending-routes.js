@@ -1566,11 +1566,12 @@ router.get('/report/sales-status', (req, res) => {
 
         const deduplicatedRows = Object.values(uniqueItems);
 
-        // 장비명으로 그룹핑 (예: 지니어스#1, 지니어스#2 ...)
+        // 장비명으로 그룹핑 (예: 지니어스#1, 지니어스#2, TAURUS#32-2번 ...)
         const groupedByName = {};
         deduplicatedRows.forEach(row => {
-            // 장비명에서 기본 이름 추출 (예: "지니어스#1" -> "지니어스")
-            const baseName = row.product_name.replace(/#\d+$/, '').trim();
+            // 장비명에서 기본 이름 추출 (# 기준 분리, 자유 텍스트 허용)
+            const hashIndex = row.product_name.indexOf('#');
+            const baseName = (hashIndex > 0 ? row.product_name.substring(0, hashIndex) : row.product_name).trim();
             if (!groupedByName[baseName]) {
                 groupedByName[baseName] = [];
             }
@@ -1642,8 +1643,57 @@ router.get('/report/sales-status', (req, res) => {
                 return b.items.length - a.items.length;
             });
 
+        // 상위 장비군(Family) 그룹핑
+        const EQUIPMENT_FAMILIES = [
+            { keyword: 'ZENIUS', label: 'ZENIUS 계열' },
+            { keyword: 'ILIAD', label: 'ILIAD 계열' },
+        ];
+
+        const SUB_GROUP_ORDER = [
+            'ZENIUS MIS', 'ZENIUS MIS(서울)', 'ZENIUS CEMENT SCREW', 'ZENIUS CEMENT SCREW(서울)', 'ZENIUS OPEN',
+            'ILIAD', 'ILIAD SCREW', 'ILIAD(서울)',
+        ];
+
+        const familyGroups = [];
+        const usedBaseNames = new Set();
+
+        EQUIPMENT_FAMILIES.forEach(family => {
+            const matching = groups.filter(g =>
+                g.baseName.toUpperCase().startsWith(family.keyword.toUpperCase())
+            );
+            if (matching.length > 0) {
+                matching.sort((a, b) => {
+                    const idxA = SUB_GROUP_ORDER.findIndex(k => a.baseName.includes(k) || k.includes(a.baseName));
+                    const idxB = SUB_GROUP_ORDER.findIndex(k => b.baseName.includes(k) || k.includes(b.baseName));
+                    return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+                });
+                familyGroups.push({
+                    familyName: family.label,
+                    isFamily: true,
+                    subGroups: matching,
+                    totalCount: matching.reduce((sum, g) => sum + g.items.length, 0),
+                    inboundCount: matching.reduce((sum, g) => sum + g.inboundCount, 0),
+                    outboundCount: matching.reduce((sum, g) => sum + g.outboundCount, 0)
+                });
+                matching.forEach(g => usedBaseNames.add(g.baseName));
+            }
+        });
+
+        const standaloneGroups = groups
+            .filter(g => !usedBaseNames.has(g.baseName))
+            .map(g => ({
+                familyName: g.baseName,
+                isFamily: false,
+                subGroups: [g],
+                totalCount: g.items.length,
+                inboundCount: g.inboundCount,
+                outboundCount: g.outboundCount
+            }));
+
+        const finalGroups = [...familyGroups, ...standaloneGroups];
+
         res.json({
-            groups,
+            groups: finalGroups,
             summary: {
                 total_equipment: deduplicatedRows.length,
                 inbound_count: deduplicatedRows.filter(r => r.status === 'inbound').length,

@@ -100,22 +100,29 @@ function SalesStatusDashboard() {
                 }
             });
 
-            // 2단계: 기구명에서 번호 추출하여 그룹화
-            // 예: "지니어스#1" -> baseName: "지니어스", number: "#1"
+            // 2단계: 기구명에서 #식별자 추출하여 그룹화
+            // 예: "ZENIUS MIS#1" -> baseName: "ZENIUS MIS", number: "#1"
+            // 예: "TAURUS CADI#32-2번" -> baseName: "TAURUS CADI", number: "#32-2번"
             const grouped = {};
 
             Object.values(latestByName).forEach(item => {
-                // 기구명에서 #번호 또는 숫자 추출
-                const match = item.name?.match(/^(.+?)(#?\d+)$/);
+                // #을 기준으로 분리 (# 뒤에 자유 텍스트 허용)
+                const hashIndex = item.name?.indexOf('#');
                 let baseName, number;
 
-                if (match) {
-                    baseName = match[1].trim();
-                    number = match[2];
+                if (hashIndex !== -1 && hashIndex > 0) {
+                    baseName = item.name.substring(0, hashIndex).trim();
+                    number = '#' + item.name.substring(hashIndex + 1);
                 } else {
-                    // 번호가 없는 경우 전체 이름을 baseName으로
-                    baseName = item.name || '미분류';
-                    number = '';
+                    // #이 없는 경우: 끝의 숫자만 분리 시도
+                    const numMatch = item.name?.match(/^(.+?)(\d+)$/);
+                    if (numMatch) {
+                        baseName = numMatch[1].trim();
+                        number = numMatch[2];
+                    } else {
+                        baseName = item.name || '미분류';
+                        number = '';
+                    }
                 }
 
                 if (!grouped[baseName]) {
@@ -132,22 +139,40 @@ function SalesStatusDashboard() {
             const groupArray = Object.entries(grouped).map(([baseName, items]) => ({
                 baseName,
                 items: items.sort((a, b) => {
-                    // 번호순 정렬
-                    const numA = parseInt(a.number?.replace('#', '') || 0);
-                    const numB = parseInt(b.number?.replace('#', '') || 0);
-                    return numA - numB;
+                    // 숫자 부분 추출하여 정렬, 숫자 없으면 문자열 정렬
+                    const numA = parseFloat(a.number?.replace(/^#/, '') || '');
+                    const numB = parseFloat(b.number?.replace(/^#/, '') || '');
+                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                    if (!isNaN(numA)) return -1;
+                    if (!isNaN(numB)) return 1;
+                    return (a.number || '').localeCompare(b.number || '');
                 }),
                 count: items.length
             }));
 
-            // 우선 표시 카테고리 정의 (순서대로 상단 배치)
-            const priorityOrder = [
+            // 상위 장비군(Family) 정의 - 키워드로 시작하는 서브그룹을 하나로 묶음
+            const equipmentFamilies = [
+                { keyword: 'ZENIUS', label: 'ZENIUS 계열' },
+                { keyword: 'ILIAD', label: 'ILIAD 계열' },
+            ];
+
+            // 우선 표시 카테고리 정의 (패밀리 내부 서브그룹 순서)
+            const subGroupOrder = [
                 'ZENIUS MIS',
+                'ZENIUS MIS(서울)',
                 'ZENIUS CEMENT SCREW',
+                'ZENIUS CEMENT SCREW(서울)',
                 'ZENIUS OPEN',
                 'ILIAD',
+                'ILIAD SCREW',
+                'ILIAD(서울)',
+            ];
+
+            // 패밀리에 속하지 않는 일반 그룹의 우선순위
+            const standaloneOrder = [
+                'ILIAD',
                 'OLIF',
-                'Lp',            // Lp케이지셋트 등
+                'Lp',
                 '아테나',
                 'C7',
                 'UNICON',
@@ -162,45 +187,74 @@ function SalesStatusDashboard() {
                 'Dynamic cage',
                 'INTRASPINE',
                 '포세이돈',
-                'ZENIUS MIS(서울)',
-                'ZENIUS CEMENT SCREW#3(서울)',
-                'LP케이지세트(서울)'
+                'LP케이지세트',
+                'LP케이지세트(서울)',
+                '델파이',
             ];
 
-            // 우선순위 인덱스 반환 함수
-            const getPriorityIndex = (baseName) => {
-                // 정확히 일치하는 경우
-                const exactIndex = priorityOrder.indexOf(baseName);
-                if (exactIndex !== -1) return exactIndex;
+            // 4단계: 패밀리 그룹 생성
+            const familyGroups = [];
+            const usedBaseNames = new Set();
 
-                // 키워드 포함 확인
-                const lowerName = baseName.toLowerCase();
-                const keywordIndex = priorityOrder.findIndex(keyword =>
-                    lowerName.includes(keyword.toLowerCase())
+            // 패밀리 그룹 처리
+            equipmentFamilies.forEach(family => {
+                const matchingGroups = groupArray.filter(g =>
+                    g.baseName.toUpperCase().startsWith(family.keyword.toUpperCase())
                 );
 
-                return keywordIndex !== -1 ? keywordIndex : 999;
-            };
+                if (matchingGroups.length > 0) {
+                    // 서브그룹 내부 정렬
+                    matchingGroups.sort((a, b) => {
+                        const idxA = subGroupOrder.findIndex(k => a.baseName.includes(k) || k.includes(a.baseName));
+                        const idxB = subGroupOrder.findIndex(k => b.baseName.includes(k) || k.includes(b.baseName));
+                        const pA = idxA !== -1 ? idxA : 999;
+                        const pB = idxB !== -1 ? idxB : 999;
+                        return pA - pB;
+                    });
 
-            // 정렬: 우선 카테고리 먼저, 나머지는 기구 수 많은 순
-            groupArray.sort((a, b) => {
-                const indexA = getPriorityIndex(a.baseName);
-                const indexB = getPriorityIndex(b.baseName);
-
-                // 둘 다 우선순위 목록에 있는 경우
-                if (indexA !== 999 && indexB !== 999) {
-                    return indexA - indexB;
+                    familyGroups.push({
+                        familyName: family.label,
+                        isFamily: true,
+                        subGroups: matchingGroups,
+                        totalCount: matchingGroups.reduce((sum, g) => sum + g.count, 0)
+                    });
+                    matchingGroups.forEach(g => usedBaseNames.add(g.baseName));
                 }
-
-                // 하나만 있는 경우
-                if (indexA !== 999) return -1;
-                if (indexB !== 999) return 1;
-
-                // 둘 다 없는 경우 - 기구 수 많은 순
-                return b.count - a.count;
             });
 
-            setEquipmentGroups(groupArray);
+            // 나머지 일반 그룹 처리
+            const standaloneGroups = groupArray
+                .filter(g => !usedBaseNames.has(g.baseName))
+                .map(g => ({
+                    familyName: g.baseName,
+                    isFamily: false,
+                    subGroups: [g],
+                    totalCount: g.count
+                }));
+
+            // 일반 그룹 정렬
+            const getStandaloneIndex = (name) => {
+                const exact = standaloneOrder.indexOf(name);
+                if (exact !== -1) return exact;
+                const keyword = standaloneOrder.findIndex(k =>
+                    name.toLowerCase().includes(k.toLowerCase())
+                );
+                return keyword !== -1 ? keyword : 999;
+            };
+
+            standaloneGroups.sort((a, b) => {
+                const idxA = getStandaloneIndex(a.familyName);
+                const idxB = getStandaloneIndex(b.familyName);
+                if (idxA !== 999 && idxB !== 999) return idxA - idxB;
+                if (idxA !== 999) return -1;
+                if (idxB !== 999) return 1;
+                return b.totalCount - a.totalCount;
+            });
+
+            // 패밀리 그룹을 최상단에, 나머지 그룹 뒤에 배치
+            const finalGroups = [...familyGroups, ...standaloneGroups];
+
+            setEquipmentGroups(finalGroups);
             setLastUpdated(new Date());
             setLoading(false);
             console.log('[fetchEquipmentStatus] Success:', groupArray.length, 'groups');
@@ -355,84 +409,115 @@ function SalesStatusDashboard() {
                             background: 'white',
                             borderRadius: '12px',
                             padding: '1rem',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                            border: group.isFamily ? '2px solid #06b6d4' : 'none'
                         }}>
-                            {/* 기구 카테고리 헤더 */}
+                            {/* 상위 그룹 헤더 */}
                             <div style={{
                                 fontWeight: 'bold',
-                                fontSize: '1rem',
-                                color: '#1e293b',
+                                fontSize: group.isFamily ? '1.1rem' : '1rem',
+                                color: group.isFamily ? '#0891b2' : '#1e293b',
                                 marginBottom: '0.75rem',
                                 paddingBottom: '0.5rem',
-                                borderBottom: '2px solid #e2e8f0'
+                                borderBottom: group.isFamily ? '3px solid #06b6d4' : '2px solid #e2e8f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem'
                             }}>
-                                {group.baseName} ({group.count}대)
+                                {group.isFamily && <span style={{ fontSize: '0.9rem' }}>📦</span>}
+                                {group.familyName} ({group.totalCount}대)
                             </div>
 
-                            {/* 3열 그리드 */}
-                            {chunkArray(group.items, 3).map((row, rowIndex) => (
-                                <div key={rowIndex} style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(3, 1fr)',
-                                    gap: '0.5rem',
-                                    marginBottom: rowIndex < chunkArray(group.items, 3).length - 1 ? '0.5rem' : 0
+                            {/* 서브그룹 렌더링 */}
+                            {group.subGroups.map((subGroup, subIndex) => (
+                                <div key={subIndex} style={{
+                                    marginBottom: subIndex < group.subGroups.length - 1 ? '0.75rem' : 0
                                 }}>
-                                    {row.map((item, colIndex) => (
-                                        <div key={colIndex} style={{
-                                            padding: '0.5rem',
-                                            borderRadius: '8px',
-                                            background: item ? '#f8fafc' : 'transparent',
-                                            border: item ? '1px solid #e2e8f0' : 'none',
-                                            minHeight: '50px',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
+                                    {/* 패밀리인 경우 서브그룹 헤더 표시 */}
+                                    {group.isFamily && (
+                                        <div style={{
+                                            fontSize: '0.85rem',
+                                            fontWeight: 'bold',
+                                            color: '#475569',
+                                            marginBottom: '0.5rem',
+                                            paddingLeft: '0.25rem',
+                                            borderLeft: '3px solid #0891b2',
+                                            paddingBottom: '0.15rem',
+                                            marginLeft: '0.25rem'
                                         }}>
-                                            {item && (
-                                                <>
-                                                    <div style={{
-                                                        fontSize: '0.85rem',
-                                                        fontWeight: 'bold',
-                                                        color: '#374151',
-                                                        marginBottom: '0.25rem'
-                                                    }}>
-                                                        {item.name}
-                                                    </div>
-                                                    <button
-                                                        onClick={() => fetchItemDetail(item)}
-                                                        style={{
-                                                            display: 'inline-block',
-                                                            padding: '0.2rem 0.6rem',
-                                                            background: item.ownership === 'CONSIGNED'
-                                                                ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
-                                                                : (item.status === 'inbound' ? '#10b981' : '#ef4444'),
-                                                            color: 'white',
-                                                            borderRadius: '4px',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: 'bold',
-                                                            border: 'none',
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        {item.status === 'inbound' ? '입고' : '출고'}
-                                                    </button>
-                                                    <button
-                                                        onClick={async (e) => {
-                                                            e.stopPropagation();
-                                                            const newOwn = item.ownership === 'CONSIGNED' ? 'OWN' : 'CONSIGNED';
-                                                            try { await axios.put(`/api/products/${item.product_id}/ownership`, { ownership: newOwn }); fetchEquipmentStatus(); } catch(err) {}
-                                                        }}
-                                                        style={{
-                                                            display: 'block', margin: '0.2rem auto 0', padding: '1px 5px',
-                                                            borderRadius: '3px', border: 'none', cursor: 'pointer',
-                                                            fontSize: '0.5rem', fontWeight: '600',
-                                                            background: item.ownership === 'CONSIGNED' ? '#fbbf24' : '#e2e8f0',
-                                                            color: item.ownership === 'CONSIGNED' ? '#92400e' : '#64748b'
-                                                        }}
-                                                    >{item.ownership === 'CONSIGNED' ? '타사' : '자사'}</button>
-                                                </>
-                                            )}
+                                            {subGroup.baseName} ({subGroup.count}대)
+                                        </div>
+                                    )}
+
+                                    {/* 3열 그리드 */}
+                                    {chunkArray(subGroup.items, 3).map((row, rowIndex) => (
+                                        <div key={rowIndex} style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(3, 1fr)',
+                                            gap: '0.5rem',
+                                            marginBottom: rowIndex < chunkArray(subGroup.items, 3).length - 1 ? '0.5rem' : 0,
+                                            marginLeft: group.isFamily ? '0.5rem' : 0
+                                        }}>
+                                            {row.map((item, colIndex) => (
+                                                <div key={colIndex} style={{
+                                                    padding: '0.5rem',
+                                                    borderRadius: '8px',
+                                                    background: item ? '#f8fafc' : 'transparent',
+                                                    border: item ? '1px solid #e2e8f0' : 'none',
+                                                    minHeight: '50px',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}>
+                                                    {item && (
+                                                        <>
+                                                            <div style={{
+                                                                fontSize: '0.85rem',
+                                                                fontWeight: 'bold',
+                                                                color: '#374151',
+                                                                marginBottom: '0.25rem',
+                                                                textAlign: 'center',
+                                                                wordBreak: 'break-word'
+                                                            }}>
+                                                                {item.name}
+                                                            </div>
+                                                            <button
+                                                                onClick={() => fetchItemDetail(item)}
+                                                                style={{
+                                                                    display: 'inline-block',
+                                                                    padding: '0.2rem 0.6rem',
+                                                                    background: item.ownership === 'CONSIGNED'
+                                                                        ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
+                                                                        : (item.status === 'inbound' ? '#10b981' : '#ef4444'),
+                                                                    color: 'white',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: 'bold',
+                                                                    border: 'none',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                {item.status === 'inbound' ? '입고' : '출고'}
+                                                            </button>
+                                                            <button
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    const newOwn = item.ownership === 'CONSIGNED' ? 'OWN' : 'CONSIGNED';
+                                                                    try { await axios.put(`/api/products/${item.product_id}/ownership`, { ownership: newOwn }); fetchEquipmentStatus(); } catch(err) {}
+                                                                }}
+                                                                style={{
+                                                                    display: 'block', margin: '0.2rem auto 0', padding: '1px 5px',
+                                                                    borderRadius: '3px', border: 'none', cursor: 'pointer',
+                                                                    fontSize: '0.5rem', fontWeight: '600',
+                                                                    background: item.ownership === 'CONSIGNED' ? '#fbbf24' : '#e2e8f0',
+                                                                    color: item.ownership === 'CONSIGNED' ? '#92400e' : '#64748b'
+                                                                }}
+                                                            >{item.ownership === 'CONSIGNED' ? '타사' : '자사'}</button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            ))}
                                         </div>
                                     ))}
                                 </div>

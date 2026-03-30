@@ -357,33 +357,52 @@ function ReportPage() {
             equipmentTableHtml = '<p style="text-align:center;color:#666;">등록된 장비가 없습니다.</p>';
         }
 
-        // 영업팀 현황판 HTML 생성
+        // 영업팀 현황판 HTML 생성 (패밀리 그룹 지원)
         let salesGridHtml = '';
         if (salesStatusData && salesStatusData.groups.length > 0) {
-            salesGridHtml = salesStatusData.groups.filter(group => !excludedGroups.includes(group.baseName)).map(group => `
-                <div class="equipment-group">
-                    <div class="group-header">
-                        <span style="font-weight:bold;">${group.baseName}</span>
-                        <span>입고 <span style="color:#10b981;">${group.inboundCount}</span> / 출고 <span style="color:#ef4444;">${group.outboundCount}</span></span>
-                    </div>
-                    <div class="equipment-items">
-                        ${group.items.map(item => {
-                            const isConsigned = item.ownership === 'CONSIGNED';
-                            const bgColor = isConsigned
-                                ? (item.status === 'inbound' ? '#eff6ff' : '#fff7ed')
-                                : (item.status === 'inbound' ? '#e8f5e9' : '#ffebee');
-                            const badgeBg = isConsigned
-                                ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
-                                : (item.status === 'inbound' ? '#4caf50' : '#f44336');
-                            return `<div class="equipment-item" style="background:${bgColor};">
-                                <div style="font-weight:600;font-size:10px;">${item.product_name}</div>
-                                <span class="status-badge" style="background:${badgeBg};color:white;">${item.status === 'inbound' ? '입고' : '출고'}</span>
-                                ${item.status === 'outbound' ? `<div style="font-size:9px;color:#666;">${item.hospital_name}</div>` : ''}
-                            </div>`;
-                        }).join('')}
-                    </div>
-                </div>
-            `).join('');
+            salesGridHtml = salesStatusData.groups.map(group => {
+                const filteredSubGroups = group.subGroups.filter(sg => !excludedGroups.includes(sg.baseName));
+                if (filteredSubGroups.length === 0) return '';
+
+                const renderItems = (items) => items.map(item => {
+                    const isConsigned = item.ownership === 'CONSIGNED';
+                    const bgColor = isConsigned
+                        ? (item.status === 'inbound' ? '#eff6ff' : '#fff7ed')
+                        : (item.status === 'inbound' ? '#e8f5e9' : '#ffebee');
+                    const badgeBg = isConsigned
+                        ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
+                        : (item.status === 'inbound' ? '#4caf50' : '#f44336');
+                    return `<div class="equipment-item" style="background:${bgColor};">
+                        <div style="font-weight:600;font-size:10px;">${item.product_name}</div>
+                        <span class="status-badge" style="background:${badgeBg};color:white;">${item.status === 'inbound' ? '입고' : '출고'}</span>
+                        ${item.status === 'outbound' ? `<div style="font-size:9px;color:#666;">${item.hospital_name}</div>` : ''}
+                    </div>`;
+                }).join('');
+
+                if (group.isFamily) {
+                    return `<div style="border:2px solid #06b6d4;margin:10px;page-break-inside:avoid;">
+                        <div style="background:#ecfeff;padding:6px 10px;border-bottom:2px solid #06b6d4;font-weight:bold;font-size:12px;color:#0891b2;">
+                            ${group.familyName} (${group.totalCount}대) — 입고 ${group.inboundCount} / 출고 ${group.outboundCount}
+                        </div>
+                        ${filteredSubGroups.map(sg => `
+                            <div style="margin-left:8px;border-left:3px solid #0891b2;margin-top:6px;">
+                                <div style="padding:3px 8px;font-size:10px;font-weight:bold;color:#475569;">${sg.baseName} (${sg.items.length}대)</div>
+                                <div class="equipment-items" style="margin-left:4px;">${renderItems(sg.items)}</div>
+                            </div>
+                        `).join('')}
+                    </div>`;
+                } else {
+                    return filteredSubGroups.map(sg => `
+                        <div class="equipment-group">
+                            <div class="group-header">
+                                <span style="font-weight:bold;">${sg.baseName}</span>
+                                <span>입고 <span style="color:#10b981;">${sg.inboundCount}</span> / 출고 <span style="color:#ef4444;">${sg.outboundCount}</span></span>
+                            </div>
+                            <div class="equipment-items">${renderItems(sg.items)}</div>
+                        </div>
+                    `).join('');
+                }
+            }).join('');
         } else {
             salesGridHtml = '<p style="text-align:center;color:#666;">등록된 장비가 없습니다.</p>';
         }
@@ -927,54 +946,104 @@ function ReportPage() {
                         {salesStatusData && salesStatusData.groups.length > 0 ? (
                             <div className="sales-grid-desktop">
                                 {salesStatusData.groups.map(group => (
-                                    <div key={group.baseName} className="equipment-group-desktop">
-                                        <div className="group-header-desktop" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
-                                                <input type="checkbox" checked={!excludedGroups.includes(group.baseName)}
-                                                    onChange={() => toggleGroupExclusion(group.baseName)}
-                                                    style={{ width: '14px', height: '14px' }} />
-                                            </label>
-                                            <span className="group-name-desktop" style={{ flex: 1, opacity: excludedGroups.includes(group.baseName) ? 0.4 : 1 }}>{group.baseName}</span>
-                                            <span className="group-stats-desktop">
+                                    <div key={group.familyName} style={{
+                                        border: group.isFamily ? '2px solid #06b6d4' : '1px solid #e2e8f0',
+                                        borderRadius: '8px',
+                                        marginBottom: '0.75rem',
+                                        overflow: 'hidden'
+                                    }}>
+                                        {/* 패밀리/그룹 헤더 */}
+                                        <div style={{
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                            padding: '0.5rem 0.75rem',
+                                            background: group.isFamily ? '#ecfeff' : '#f8fafc',
+                                            borderBottom: group.isFamily ? '2px solid #06b6d4' : '1px solid #e2e8f0',
+                                            fontWeight: 'bold',
+                                            fontSize: group.isFamily ? '0.95rem' : '0.85rem',
+                                            color: group.isFamily ? '#0891b2' : '#1e293b'
+                                        }}>
+                                            <span>{group.isFamily ? '📦 ' : ''}{group.familyName} ({group.totalCount}대)</span>
+                                            <span style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>
                                                 <span style={{ color: '#10b981' }}>입고 {group.inboundCount}</span>
                                                 <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>출고 {group.outboundCount}</span>
                                             </span>
                                         </div>
-                                        <div className="equipment-items-desktop">
-                                            {group.items.map(item => {
-                                                const isConsigned = item.ownership === 'CONSIGNED';
-                                                const badgeColor = isConsigned
-                                                    ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
-                                                    : (item.status === 'inbound' ? '#4caf50' : '#f44336');
-                                                const bgColor = isConsigned
-                                                    ? (item.status === 'inbound' ? '#eff6ff' : '#fff7ed')
-                                                    : (item.status === 'inbound' ? '#e8f5e9' : '#ffebee');
-                                                return (
-                                                <div
-                                                    key={item.lending_item_id}
-                                                    className="equipment-item-desktop"
-                                                    style={{ background: bgColor }}
-                                                >
-                                                    <div className="item-name-desktop">{item.product_name}</div>
-                                                    <span className="status-badge-desktop" style={{ background: badgeColor, color: 'white' }}>
-                                                        {item.status === 'inbound' ? '입고' : '출고'}
-                                                    </span>
-                                                    {item.status === 'outbound' && (
-                                                        <div className="item-location-desktop">{item.hospital_name}</div>
-                                                    )}
-                                                    <button className="no-print" onClick={async () => {
-                                                        const newOwn = isConsigned ? 'OWN' : 'CONSIGNED';
-                                                        try { await axios.put(`/api/products/${item.product_id || item.lending_item_id}/ownership`, { ownership: newOwn }); fetchReportData(); } catch(e) {}
-                                                    }} style={{
-                                                        marginTop: '2px', padding: '1px 5px', borderRadius: '3px',
-                                                        border: 'none', cursor: 'pointer', fontSize: '0.55rem', fontWeight: '600',
-                                                        background: isConsigned ? '#fbbf24' : '#e2e8f0',
-                                                        color: isConsigned ? '#92400e' : '#64748b'
-                                                    }}>{isConsigned ? '타사' : '자사'}</button>
+
+                                        {/* 서브그룹들 */}
+                                        {group.subGroups.map(subGroup => (
+                                            <div key={subGroup.baseName}>
+                                                {/* 패밀리인 경우 서브그룹 헤더 */}
+                                                {group.isFamily && (
+                                                    <div className="group-header-desktop" style={{
+                                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                        borderLeft: '3px solid #0891b2', marginLeft: '0.5rem', marginTop: '0.5rem'
+                                                    }}>
+                                                        <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                                                            <input type="checkbox" checked={!excludedGroups.includes(subGroup.baseName)}
+                                                                onChange={() => toggleGroupExclusion(subGroup.baseName)}
+                                                                style={{ width: '14px', height: '14px' }} />
+                                                        </label>
+                                                        <span className="group-name-desktop" style={{ flex: 1, opacity: excludedGroups.includes(subGroup.baseName) ? 0.4 : 1 }}>
+                                                            {subGroup.baseName} ({subGroup.items.length}대)
+                                                        </span>
+                                                        <span className="group-stats-desktop" style={{ fontSize: '0.75rem' }}>
+                                                            <span style={{ color: '#10b981' }}>입고 {subGroup.inboundCount}</span>
+                                                            <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>출고 {subGroup.outboundCount}</span>
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {/* 패밀리가 아닌 경우 기존 헤더 */}
+                                                {!group.isFamily && (
+                                                    <div className="group-header-desktop" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <label className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                                                            <input type="checkbox" checked={!excludedGroups.includes(subGroup.baseName)}
+                                                                onChange={() => toggleGroupExclusion(subGroup.baseName)}
+                                                                style={{ width: '14px', height: '14px' }} />
+                                                        </label>
+                                                        <span className="group-name-desktop" style={{ flex: 1, opacity: excludedGroups.includes(subGroup.baseName) ? 0.4 : 1 }}>{subGroup.baseName}</span>
+                                                        <span className="group-stats-desktop">
+                                                            <span style={{ color: '#10b981' }}>입고 {subGroup.inboundCount}</span>
+                                                            <span style={{ color: '#ef4444', marginLeft: '0.5rem' }}>출고 {subGroup.outboundCount}</span>
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                <div className="equipment-items-desktop" style={{ marginLeft: group.isFamily ? '0.75rem' : 0 }}>
+                                                    {subGroup.items.map(item => {
+                                                        const isConsigned = item.ownership === 'CONSIGNED';
+                                                        const badgeColor = isConsigned
+                                                            ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
+                                                            : (item.status === 'inbound' ? '#4caf50' : '#f44336');
+                                                        const bgColor = isConsigned
+                                                            ? (item.status === 'inbound' ? '#eff6ff' : '#fff7ed')
+                                                            : (item.status === 'inbound' ? '#e8f5e9' : '#ffebee');
+                                                        return (
+                                                        <div
+                                                            key={item.lending_item_id}
+                                                            className="equipment-item-desktop"
+                                                            style={{ background: bgColor }}
+                                                        >
+                                                            <div className="item-name-desktop">{item.product_name}</div>
+                                                            <span className="status-badge-desktop" style={{ background: badgeColor, color: 'white' }}>
+                                                                {item.status === 'inbound' ? '입고' : '출고'}
+                                                            </span>
+                                                            {item.status === 'outbound' && (
+                                                                <div className="item-location-desktop">{item.hospital_name}</div>
+                                                            )}
+                                                            <button className="no-print" onClick={async () => {
+                                                                const newOwn = isConsigned ? 'OWN' : 'CONSIGNED';
+                                                                try { await axios.put(`/api/products/${item.product_id || item.lending_item_id}/ownership`, { ownership: newOwn }); fetchReportData(); } catch(e) {}
+                                                            }} style={{
+                                                                marginTop: '2px', padding: '1px 5px', borderRadius: '3px',
+                                                                border: 'none', cursor: 'pointer', fontSize: '0.55rem', fontWeight: '600',
+                                                                background: isConsigned ? '#fbbf24' : '#e2e8f0',
+                                                                color: isConsigned ? '#92400e' : '#64748b'
+                                                            }}>{isConsigned ? '타사' : '자사'}</button>
+                                                        </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                                );
-                                            })}
-                                        </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 ))}
                             </div>
