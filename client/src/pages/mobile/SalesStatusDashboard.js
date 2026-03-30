@@ -68,10 +68,7 @@ function SalesStatusDashboard() {
                     .replace('(피블라)', '(FIBULAR)')
                     .replace('(티비아)', '(TIBIA)');
 
-                // 2. 특정 제품명 변경
-                if (item.product_name.includes('보아즈 extlif 3D cage')) {
-                    item.product_name = item.product_name.replace('보아즈 extlif 3D cage', '엔도비젼 3D cage');
-                }
+                // 2. 특정 제품명 변경 (보아즈 계열은 패밀리 그룹핑을 위해 원래 이름 유지)
             });
 
             // 1단계: 각 기구명당 최신 이력만 선택 (중복 제거)
@@ -154,25 +151,27 @@ function SalesStatusDashboard() {
             const equipmentFamilies = [
                 { keyword: 'ZENIUS', label: 'ZENIUS 계열' },
                 { keyword: 'ILIAD', label: 'ILIAD 계열' },
+                { keyword: '보아즈', label: '보아즈 계열' },
+                { keyword: '제일트라우마', label: '제일트라우마 계열' },
+                { keyword: 'UBE', label: 'UBE 계열' },
+                { keyword: 'Ace Ti', label: 'Ace Ti 계열', caseSensitive: true },
+                { keywords: ['Lp케이지', 'LP케이지', 'LP25케디'], label: 'LP케이지 계열' },
             ];
 
             // 우선 표시 카테고리 정의 (패밀리 내부 서브그룹 순서)
             const subGroupOrder = [
-                'ZENIUS MIS',
-                'ZENIUS MIS(서울)',
-                'ZENIUS CEMENT SCREW',
-                'ZENIUS CEMENT SCREW(서울)',
-                'ZENIUS OPEN',
-                'ILIAD',
-                'ILIAD SCREW',
-                'ILIAD(서울)',
+                'ZENIUS MIS', 'ZENIUS MIS(서울)', 'ZENIUS CEMENT SCREW', 'ZENIUS CEMENT SCREW(서울)', 'ZENIUS OPEN',
+                'ILIAD', 'ILIAD CEMENT SCREW', 'ILIAD MINISIGE SCREW',
+                '보아즈 extlif 세트', '보아즈 extlif 3D cage', '보아즈 extrif 세트(서울)',
+                '제일트라우마세트(휴머러스)', '제일트라우마세트(라디우스)', '제일트라우마세트(크래비클)', '제일트라우마세트(티비아)', '제일트라우마세트(피블라)',
+                'UBE 툴셋(대형)', 'UBE 툴셋(소형)',
+                'Ace Ti 3D cage', 'Ace Ti C type 3D felix',
+                'Lp케이지셋트', 'LP케이지세트(서울)', 'LP25케디',
             ];
 
             // 패밀리에 속하지 않는 일반 그룹의 우선순위
             const standaloneOrder = [
-                'ILIAD',
                 'OLIF',
-                'Lp',
                 '아테나',
                 'C7',
                 'UNICON',
@@ -180,15 +179,11 @@ function SalesStatusDashboard() {
                 '지니어스리무버',
                 'LUMBAR RETRACTOR',
                 'MEDYSSEY HOOK',
-                '엔도비젼 3D cage',
                 'FELIX CAGE',
-                'Ace ti cage',
                 'U&I peek cage',
                 'Dynamic cage',
                 'INTRASPINE',
                 '포세이돈',
-                'LP케이지세트',
-                'LP케이지세트(서울)',
                 '델파이',
             ];
 
@@ -198,9 +193,13 @@ function SalesStatusDashboard() {
 
             // 패밀리 그룹 처리
             equipmentFamilies.forEach(family => {
-                const matchingGroups = groupArray.filter(g =>
-                    g.baseName.toUpperCase().startsWith(family.keyword.toUpperCase())
-                );
+                const familyKeywords = family.keywords || [family.keyword];
+                const matchingGroups = groupArray.filter(g => {
+                    return familyKeywords.some(kw => {
+                        if (family.caseSensitive) return g.baseName.startsWith(kw);
+                        return g.baseName.toUpperCase().startsWith(kw.toUpperCase());
+                    });
+                });
 
                 if (matchingGroups.length > 0) {
                     // 서브그룹 내부 정렬

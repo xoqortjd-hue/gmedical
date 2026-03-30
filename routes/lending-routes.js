@@ -1647,20 +1647,34 @@ router.get('/report/sales-status', (req, res) => {
         const EQUIPMENT_FAMILIES = [
             { keyword: 'ZENIUS', label: 'ZENIUS 계열' },
             { keyword: 'ILIAD', label: 'ILIAD 계열' },
+            { keyword: '보아즈', label: '보아즈 계열' },
+            { keyword: '제일트라우마', label: '제일트라우마 계열' },
+            { keyword: 'UBE', label: 'UBE 계열' },
+            { keyword: 'Ace Ti', label: 'Ace Ti 계열', caseSensitive: true },
+            { keywords: ['Lp케이지', 'LP케이지', 'LP25케디'], label: 'LP케이지 계열' },
         ];
 
         const SUB_GROUP_ORDER = [
             'ZENIUS MIS', 'ZENIUS MIS(서울)', 'ZENIUS CEMENT SCREW', 'ZENIUS CEMENT SCREW(서울)', 'ZENIUS OPEN',
-            'ILIAD', 'ILIAD SCREW', 'ILIAD(서울)',
+            'ILIAD', 'ILIAD CEMENT SCREW', 'ILIAD MINISIGE SCREW',
+            '보아즈 extlif 세트', '보아즈 extlif 3D cage', '보아즈 extrif 세트(서울)',
+            '제일트라우마세트(휴머러스)', '제일트라우마세트(라디우스)', '제일트라우마세트(크래비클)', '제일트라우마세트(티비아)', '제일트라우마세트(피블라)',
+            'UBE 툴셋(대형)', 'UBE 툴셋(소형)',
+            'Ace Ti 3D cage', 'Ace Ti C type 3D felix',
+            'Lp케이지셋트', 'LP케이지세트(서울)', 'LP25케디',
         ];
 
         const familyGroups = [];
         const usedBaseNames = new Set();
 
         EQUIPMENT_FAMILIES.forEach(family => {
-            const matching = groups.filter(g =>
-                g.baseName.toUpperCase().startsWith(family.keyword.toUpperCase())
-            );
+            const familyKeywords = family.keywords || [family.keyword];
+            const matching = groups.filter(g => {
+                return familyKeywords.some(kw => {
+                    if (family.caseSensitive) return g.baseName.startsWith(kw);
+                    return g.baseName.toUpperCase().startsWith(kw.toUpperCase());
+                });
+            });
             if (matching.length > 0) {
                 matching.sort((a, b) => {
                     const idxA = SUB_GROUP_ORDER.findIndex(k => a.baseName.includes(k) || k.includes(a.baseName));
