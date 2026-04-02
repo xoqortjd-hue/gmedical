@@ -524,9 +524,7 @@ function SalesStatusDashboard() {
                                                                 style={{
                                                                     display: 'inline-block',
                                                                     padding: '0.2rem 0.6rem',
-                                                                    background: item.ownership === 'CONSIGNED'
-                                                                        ? (item.status === 'inbound' ? '#3b82f6' : '#f97316')
-                                                                        : (item.status === 'inbound' ? '#10b981' : '#ef4444'),
+                                                                    background: item.status === 'inbound' ? '#10b981' : '#ef4444',
                                                                     color: 'white',
                                                                     borderRadius: '4px',
                                                                     fontSize: '0.7rem',
