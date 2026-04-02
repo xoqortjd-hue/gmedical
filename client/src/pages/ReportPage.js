@@ -414,7 +414,7 @@ function ReportPage() {
             <head>
                 <title>금양메디칼 - 장비 관리 보고서</title>
                 <style>
-                    * { box-sizing: border-box; }
+                    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
                     body { font-family: 'Malgun Gothic', sans-serif; margin: 20px; font-size: 12px; }
                     h1 { text-align: center; margin-bottom: 5px; font-size: 18px; }
                     .date-info { text-align: center; color: #666; margin-bottom: 20px; font-size: 11px; }
