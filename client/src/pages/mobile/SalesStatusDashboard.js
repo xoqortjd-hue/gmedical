@@ -152,22 +152,24 @@ function SalesStatusDashboard() {
             const equipmentFamilies = [
                 { keyword: 'ZENIUS', label: 'ZENIUS 계열' },
                 { keyword: 'ILIAD', label: 'ILIAD 계열' },
+                { keywords: ['Lp케이지', 'LP케이지', 'LP25케디'], label: 'LP케이지 계열' },
+                { keyword: 'Taurus케디', label: 'Taurus케디 계열' },
                 { keyword: '보아즈', label: '보아즈 계열' },
                 { keyword: '제일트라우마', label: '제일트라우마 계열' },
                 { keyword: 'UBE', label: 'UBE 계열' },
                 { keyword: 'Ace Ti', label: 'Ace Ti 계열', caseSensitive: true },
-                { keywords: ['Lp케이지', 'LP케이지', 'LP25케디'], label: 'LP케이지 계열' },
             ];
 
             // 우선 표시 카테고리 정의 (패밀리 내부 서브그룹 순서)
             const subGroupOrder = [
                 'ZENIUS MIS', 'ZENIUS MIS(서울)', 'ZENIUS CEMENT SCREW', 'ZENIUS CEMENT SCREW(서울)', 'ZENIUS OPEN',
                 'ILIAD', 'ILIAD CEMENT SCREW', 'ILIAD MINISIGE SCREW',
+                'Lp케이지셋트', 'LP케이지세트(서울)', 'LP25케디',
+                'Taurus케디',
                 '보아즈 extlif 세트', '보아즈 extlif 3D cage', '보아즈 extrif 세트(서울)',
                 '제일트라우마세트(휴머러스)', '제일트라우마세트(라디우스)', '제일트라우마세트(크래비클)', '제일트라우마세트(티비아)', '제일트라우마세트(피블라)',
                 'UBE 툴셋(대형)', 'UBE 툴셋(소형)',
                 'Ace Ti 3D cage', 'Ace Ti C type 3D felix',
-                'Lp케이지셋트', 'LP케이지세트(서울)', 'LP25케디',
             ];
 
             // 패밀리에 속하지 않는 일반 그룹의 우선순위

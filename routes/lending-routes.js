@@ -1647,11 +1647,12 @@ router.get('/report/sales-status', (req, res) => {
         const EQUIPMENT_FAMILIES = [
             { keyword: 'ZENIUS', label: 'ZENIUS 계열' },
             { keyword: 'ILIAD', label: 'ILIAD 계열' },
+            { keywords: ['Lp케이지', 'LP케이지', 'LP25케디'], label: 'LP케이지 계열' },
+            { keyword: 'Taurus케디', label: 'Taurus케디 계열' },
             { keyword: '보아즈', label: '보아즈 계열' },
             { keyword: '제일트라우마', label: '제일트라우마 계열' },
             { keyword: 'UBE', label: 'UBE 계열' },
             { keyword: 'Ace Ti', label: 'Ace Ti 계열', caseSensitive: true },
-            { keywords: ['Lp케이지', 'LP케이지', 'LP25케디'], label: 'LP케이지 계열' },
         ];
 
         const SUB_GROUP_ORDER = [
@@ -1662,6 +1663,7 @@ router.get('/report/sales-status', (req, res) => {
             'UBE 툴셋(대형)', 'UBE 툴셋(소형)',
             'Ace Ti 3D cage', 'Ace Ti C type 3D felix',
             'Lp케이지셋트', 'LP케이지세트(서울)', 'LP25케디',
+            'Taurus케디',
         ];
 
         const familyGroups = [];
