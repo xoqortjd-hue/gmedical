@@ -368,12 +368,14 @@ function ReportPage() {
                 if (filteredSubGroups.length === 0) return '';
 
                 const renderItems = (items) => items.map(item => {
+                    const isConsigned = item.ownership === 'CONSIGNED';
                     const bgColor = item.status === 'inbound' ? '#e8f5e9' : '#ffebee';
                     const badgeBg = item.status === 'inbound' ? '#4caf50' : '#f44336';
                     return `<div class="equipment-item" style="background:${bgColor};">
                         <div style="font-weight:600;font-size:10px;">${item.product_name}</div>
                         <span class="status-badge" style="background:${badgeBg};color:white;">${item.status === 'inbound' ? '입고' : '출고'}</span>
                         ${item.status === 'outbound' ? `<div style="font-size:9px;color:#666;">${item.hospital_name}</div>` : ''}
+                        <div style="font-size:8px;font-weight:600;margin-top:2px;padding:1px 4px;border-radius:2px;display:inline-block;background:${isConsigned ? '#fbbf24' : '#e2e8f0'};color:${isConsigned ? '#92400e' : '#64748b'};">${isConsigned ? '타사' : '자사'}</div>
                     </div>`;
                 }).join('');
 
