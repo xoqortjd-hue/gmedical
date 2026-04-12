@@ -877,13 +877,13 @@ body {
 }
 
 .equipment-item-desktop.inbound {
-  border-color: #10b981;
-  background: #f0fdf4;
+  border-color: #3b82f6;
+  background: #e8f4fd;
 }
 
 .equipment-item-desktop.outbound {
-  border-color: #ef4444;
-  background: #fef2f2;
+  border-color: #3b82f6;
+  background: #e8f4fd;
 }
 
 .item-name-desktop {

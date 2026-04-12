@@ -501,8 +501,8 @@ function SalesStatusDashboard() {
                                                 <div key={colIndex} style={{
                                                     padding: '0.5rem',
                                                     borderRadius: '8px',
-                                                    background: item ? '#f8fafc' : 'transparent',
-                                                    border: item ? '1px solid #e2e8f0' : 'none',
+                                                    background: item ? (item.ownership === 'CONSIGNED' ? '#fef9e7' : '#e8f4fd') : 'transparent',
+                                                    border: item ? `1.5px solid ${item.ownership === 'CONSIGNED' ? '#f59e0b' : '#3b82f6'}` : 'none',
                                                     minHeight: '50px',
                                                     display: 'flex',
                                                     flexDirection: 'column',

@@ -360,10 +360,16 @@ function MobileReportPage() {
                                             </span>
                                         </div>
                                         <div className="equipment-items-grid">
-                                            {group.items.map(item => (
+                                            {group.items.map(item => {
+                                                const isConsigned = item.ownership === 'CONSIGNED';
+                                                return (
                                                 <div
                                                     key={item.lending_item_id}
                                                     className={`equipment-item ${item.status}`}
+                                                    style={{
+                                                        background: isConsigned ? '#fef9e7' : '#e8f4fd',
+                                                        borderColor: isConsigned ? '#f59e0b' : '#3b82f6'
+                                                    }}
                                                 >
                                                     <div className="item-name">{item.product_name}</div>
                                                     <div className={`item-status-badge ${item.status}`}>
@@ -372,8 +378,15 @@ function MobileReportPage() {
                                                     {item.status === 'outbound' && (
                                                         <div className="item-location">{item.hospital_name}</div>
                                                     )}
+                                                    <div style={{
+                                                        fontSize: '0.55rem', fontWeight: '600', marginTop: '2px',
+                                                        padding: '1px 4px', borderRadius: '2px', display: 'inline-block',
+                                                        background: isConsigned ? '#fbbf24' : '#e2e8f0',
+                                                        color: isConsigned ? '#92400e' : '#64748b'
+                                                    }}>{isConsigned ? '타사' : '자사'}</div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 ))}

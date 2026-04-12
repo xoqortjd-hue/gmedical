@@ -158,6 +158,9 @@ function ReportPage() {
     // 자사/타사 수정 모드
     const [ownershipEditMode, setOwnershipEditMode] = useState(false);
 
+    // 인쇄 배경색 모드: 'ownership' = 관리자용(자사/타사), 'status' = 영업팀용(입고/출고)
+    const [printColorMode, setPrintColorMode] = useState('status');
+
     useEffect(() => {
         fetchReportData();
     }, [period, dateOffset]);
@@ -369,11 +372,22 @@ function ReportPage() {
 
                 const renderItems = (items) => items.map(item => {
                     const isConsigned = item.ownership === 'CONSIGNED';
-                    const bgColor = item.status === 'inbound' ? '#e8f5e9' : '#ffebee';
-                    const badgeBg = item.status === 'inbound' ? '#4caf50' : '#f44336';
-                    return `<div class="equipment-item" style="background:${bgColor};">
+                    const isInbound = item.status === 'inbound';
+                    // 인쇄 배경색 모드에 따라 색상 결정
+                    let bgColor, borderColor;
+                    if (printColorMode === 'ownership') {
+                        // 관리자용: 자사/타사 기준 배경색
+                        bgColor = isConsigned ? '#fef9e7' : '#e8f4fd';
+                        borderColor = isConsigned ? '#f59e0b' : '#3b82f6';
+                    } else {
+                        // 영업팀용: 입고/출고 기준 배경색
+                        bgColor = isInbound ? '#e8f5e9' : '#ffebee';
+                        borderColor = isInbound ? '#4caf50' : '#f44336';
+                    }
+                    const badgeBg = isInbound ? '#4caf50' : '#f44336';
+                    return `<div class="equipment-item" style="background:${bgColor};border:1.5px solid ${borderColor};">
                         <div style="font-weight:600;font-size:10px;">${item.product_name}</div>
-                        <span class="status-badge" style="background:${badgeBg};color:white;">${item.status === 'inbound' ? '입고' : '출고'}</span>
+                        <span class="status-badge" style="background:${badgeBg};color:white;">${isInbound ? '입고' : '출고'}</span>
                         ${item.status === 'outbound' ? `<div style="font-size:9px;color:#666;">${item.hospital_name}</div>` : ''}
                         <div style="font-size:8px;font-weight:600;margin-top:2px;padding:1px 4px;border-radius:2px;display:inline-block;background:${isConsigned ? '#fbbf24' : '#e2e8f0'};color:${isConsigned ? '#92400e' : '#64748b'};">${isConsigned ? '타사' : '자사'}</div>
                     </div>`;
@@ -480,10 +494,11 @@ function ReportPage() {
 
                 ${printSections.sales ? `
                 <div class="section">
-                    <div class="section-header">📋 영업팀 장비 입출고 현황판 (입고 ${salesStatusData?.summary?.inbound_count || 0} / 출고 ${salesStatusData?.summary?.outbound_count || 0})</div>
+                    <div class="section-header">📋 ${printColorMode === 'ownership' ? '관리자용' : '영업팀'} 장비 입출고 현황판 (입고 ${salesStatusData?.summary?.inbound_count || 0} / 출고 ${salesStatusData?.summary?.outbound_count || 0})</div>
                     <div style="padding:6px 10px;font-size:9px;color:#666;border-bottom:1px solid #eee;display:flex;gap:12px;">
                         <span><span style="display:inline-block;width:10px;height:10px;background:#4caf50;border-radius:2px;"></span> 입고</span>
                         <span><span style="display:inline-block;width:10px;height:10px;background:#f44336;border-radius:2px;"></span> 출고</span>
+                        <span style="margin-left:8px;border-left:1px solid #ccc;padding-left:8px;">배경색: ${printColorMode === 'ownership' ? '자사/타사 구분' : '입고/출고 구분'}</span>
                     </div>
                     ${salesGridHtml}
                 </div>
@@ -552,9 +567,40 @@ function ReportPage() {
                         <h1>📊 리포트 - 장비 관리 보고서</h1>
                         <p>병원별 수술 건수 및 장비 입출고 현황을 조회하고 인쇄합니다</p>
                     </div>
-                    <button onClick={handlePrint} className="btn btn-primary" style={{ fontSize: '1rem', padding: '0.75rem 1.5rem' }}>
-                        🖨️ 인쇄하기
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            padding: '0.5rem 0.75rem', background: '#f8fafc',
+                            borderRadius: '8px', border: '1px solid #e2e8f0'
+                        }}>
+                            <span style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>인쇄 배경색:</span>
+                            <button
+                                onClick={() => setPrintColorMode('ownership')}
+                                style={{
+                                    padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none',
+                                    fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer',
+                                    background: printColorMode === 'ownership' ? '#3b82f6' : '#e2e8f0',
+                                    color: printColorMode === 'ownership' ? 'white' : '#64748b'
+                                }}
+                            >
+                                관리자용 (자사/타사)
+                            </button>
+                            <button
+                                onClick={() => setPrintColorMode('status')}
+                                style={{
+                                    padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none',
+                                    fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer',
+                                    background: printColorMode === 'status' ? '#10b981' : '#e2e8f0',
+                                    color: printColorMode === 'status' ? 'white' : '#64748b'
+                                }}
+                            >
+                                영업팀용 (입고/출고)
+                            </button>
+                        </div>
+                        <button onClick={handlePrint} className="btn btn-primary" style={{ fontSize: '1rem', padding: '0.75rem 1.5rem' }}>
+                            🖨️ 인쇄하기
+                        </button>
+                    </div>
                 </div>
 
                 {/* 특이사항 편집 (page-header 안에서 동작 보장) */}
@@ -1039,12 +1085,13 @@ function ReportPage() {
                                                     {subGroup.items.map(item => {
                                                         const isConsigned = item.ownership === 'CONSIGNED';
                                                         const badgeColor = item.status === 'inbound' ? '#4caf50' : '#f44336';
-                                                        const bgColor = item.status === 'inbound' ? '#e8f5e9' : '#ffebee';
+                                                        const bgColor = isConsigned ? '#fef9e7' : '#e8f4fd';
+                                                        const borderColor = isConsigned ? '#f59e0b' : '#3b82f6';
                                                         return (
                                                         <div
                                                             key={item.lending_item_id}
                                                             className="equipment-item-desktop"
-                                                            style={{ background: bgColor }}
+                                                            style={{ background: bgColor, borderColor: borderColor }}
                                                         >
                                                             <div className="item-name-desktop">{item.product_name}</div>
                                                             <span className="status-badge-desktop" style={{ background: badgeColor, color: 'white' }}>
