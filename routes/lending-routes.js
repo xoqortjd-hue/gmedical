@@ -1594,7 +1594,7 @@ router.get('/report/sales-status', (req, res) => {
             'ZENIUS OPEN',
             'ILIAD',
             'OLIF',          // OLIF기구, OLIF 등 포함
-            'Lp',            // Lp케이지셋트, LP케이지세트 등 포함
+            '케이지기구',     // 케이지기구세트 등 포함 (구 Lp케이지셋트)
             '아테나',         // Athena
             'C7',
             'UNICON',
@@ -1647,7 +1647,7 @@ router.get('/report/sales-status', (req, res) => {
         const EQUIPMENT_FAMILIES = [
             { keyword: 'ZENIUS', label: 'ZENIUS 계열' },
             { keyword: 'ILIAD', label: 'ILIAD 계열' },
-            { keywords: ['Lp케이지', 'LP케이지', 'LP25케디'], label: 'LP케이지 계열' },
+            { keywords: ['Lp케이지', 'LP케이지', 'LP25케디', '케이지기구'], label: 'LP케이지 계열' },
             { keyword: 'Taurus케디', label: 'Taurus케디 계열' },
             { keyword: '보아즈', label: '보아즈 계열' },
             { keyword: '제일트라우마', label: '제일트라우마 계열' },
@@ -1662,7 +1662,7 @@ router.get('/report/sales-status', (req, res) => {
             '제일트라우마세트(휴머러스)', '제일트라우마세트(라디우스)', '제일트라우마세트(크래비클)', '제일트라우마세트(티비아)', '제일트라우마세트(피블라)',
             'UBE 툴셋(대형)', 'UBE 툴셋(소형)',
             'Ace Ti 3D cage', 'Ace Ti C type 3D felix',
-            'Lp케이지셋트', 'LP케이지세트(서울)', 'LP25케디',
+            '케이지기구세트', '케이지기구세트(서울)', 'LP25케디',
             'Taurus케디',
         ];
 

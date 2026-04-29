@@ -11,7 +11,7 @@ const CATEGORY_ORDER = [
     'ZENIUS MIS', 'ZENIUS MIS(서울)',
     'ZENIUS CEMENT SCREW', 'ZENIUS CEMENT SCREW#3(서울)', 'ZENIUS OPEN',
     'ILIAD CEMENT SCREW', 'ILIAD MINISIGE SCREW',
-    'OLIF', 'Lp케이지셋트', 'LP케이지세트(서울)',
+    'OLIF', '케이지기구세트', '케이지기구세트(서울)',
     '아테나', 'C7', 'UNICON', '바게라', '지니어스리무버',
     'LUMBAR RETRACTOR', 'MEDYSSEY HOOK',
     '엔도비젼 3D cage', 'FELIX CAGE', 'Ace ti cage',

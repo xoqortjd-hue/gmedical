@@ -243,7 +243,7 @@ function SalesInOutRegisterPage() {
             'ZENIUS OPEN',
             'ILIAD',
             'OLIF',
-            'Lp',            // Lp케이지셋트 등
+            '케이지기구',     // 케이지기구세트 등 (구 Lp케이지셋트)
             '아테나',
             'C7',
             'UNICON',
@@ -260,7 +260,7 @@ function SalesInOutRegisterPage() {
             '포세이돈',
             'ZENIUS MIS(서울)',
             'ZENIUS CEMENT SCREW#3(서울)',
-            'LP케이지세트(서울)'
+            '케이지기구세트(서울)'
         ];
 
         // 우선순위 인덱스 반환 함수
