@@ -34,6 +34,8 @@ function SalesInOutRegisterPage() {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [processing, setProcessing] = useState(false);
+    // 업로드 진행 오버레이 (다중 사진 출고용)
+    const [uploadProgress, setUploadProgress] = useState(null); // null | { current,total,label,percent }
 
     // 출고 폼 상태 - 다중 선택 지원
     const [selectedItems, setSelectedItems] = useState([]); // 다중 선택 배열
@@ -517,12 +519,20 @@ function SalesInOutRegisterPage() {
             const successItems = [];
             const failedItems = [];
 
+            const totalSteps = totalItems * (1 + photos.length);
+            let stepDone = 0;
+            const tick = (label) => {
+                stepDone++;
+                const percent = Math.round((stepDone / totalSteps) * 100);
+                setUploadProgress({ current: stepDone, total: totalSteps, label, percent });
+                return new Promise(r => setTimeout(r, 0));
+            };
+
             for (let i = 0; i < totalItems; i++) {
                 const item = selectedItems[i];
-                setMessage(`⏳ 출고 처리 중... (${i + 1}/${totalItems}) - ${item.product_name}`);
-
+                const itemLabel = `(${i + 1}/${totalItems}) ${item.product_name}`;
                 try {
-                    // 이동 API 호출
+                    await tick(`${itemLabel} - 출고 이동 중...`);
                     console.log('[handleOutbound] Moving item:', item.id, 'to hospital:', hospitalId);
                     await axios.post('/api/lending/move', {
                         lending_item_id: item.id,
@@ -531,20 +541,15 @@ function SalesInOutRegisterPage() {
                         notes: `출고 처리 - ${new Date().toLocaleString('ko-KR')}`
                     });
 
-                    // 기존 사진 삭제 후 새 사진 업로드
-                    console.log('[handleOutbound] Deleting existing photos for item:', item.id);
-                    try {
-                        await axios.delete(`/api/lending/items/${item.id}/photos`);
-                    } catch (deleteError) {
-                        console.log('[handleOutbound] No existing photos or delete failed:', deleteError.message);
-                    }
-
-                    // 새 사진 업로드 (모든 장비에 동일한 사진 적용)
-                    console.log('[handleOutbound] Uploading', photos.length, 'new photos for item:', item.id);
+                    // 사진 업로드: 첫 장은 mode='replace' (기존 활성 자동 교체),
+                    // 나머지는 'append' 로 누적 (이전 archived 사진은 보호됨)
+                    console.log('[handleOutbound] Uploading', photos.length, 'photos for item:', item.id);
                     for (let j = 0; j < photos.length; j++) {
+                        await tick(`${itemLabel} - 사진 ${j + 1}/${photos.length}`);
                         await axios.put(`/api/lending/items/${item.id}/photo`, {
                             photo_url: photos[j],
-                            uploaded_by: movedBy
+                            uploaded_by: movedBy,
+                            mode: j === 0 ? 'replace' : 'append'
                         });
                     }
 
@@ -554,6 +559,7 @@ function SalesInOutRegisterPage() {
                     failedItems.push(item.product_name);
                 }
             }
+            setUploadProgress(null);
 
             // 결과 메시지
             if (failedItems.length === 0) {
@@ -1269,6 +1275,41 @@ function SalesInOutRegisterPage() {
 
             {/* 하단 네비게이션 */}
             <SalesBottomNav />
+
+            {/* 업로드 진행 오버레이 */}
+            {uploadProgress && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.6)', zIndex: 9999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+                }}>
+                    <div style={{
+                        background: 'white', borderRadius: '12px', padding: '1.5rem',
+                        width: '100%', maxWidth: '400px', textAlign: 'center'
+                    }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: '700', marginBottom: '0.5rem' }}>
+                            📤 출고 처리 중
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#374151', marginBottom: '0.8rem', minHeight: '2.5em', lineHeight: 1.4 }}>
+                            {uploadProgress.label}
+                        </div>
+                        <div style={{ height: '12px', background: '#e5e7eb', borderRadius: '6px', overflow: 'hidden', marginBottom: '0.5rem' }}>
+                            <div style={{
+                                width: `${uploadProgress.percent}%`,
+                                height: '100%',
+                                background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+                                transition: 'width 0.2s'
+                            }} />
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                            {uploadProgress.current} / {uploadProgress.total} 단계 ({uploadProgress.percent}%)
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#9ca3af', marginTop: '0.5rem' }}>
+                            업로드 중에 이 화면을 닫지 마세요
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
