@@ -78,22 +78,38 @@ async function compressBuffer(buf) {
     return await pipeline.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toBuffer();
 }
 
+function listIds(db, table) {
+    return new Promise((resolve, reject) => {
+        db.all(
+            `SELECT id FROM ${table} WHERE photo_url LIKE 'data:%' ORDER BY id`,
+            (e, r) => e ? reject(e) : resolve(r.map(x => x.id))
+        );
+    });
+}
+
+function getRowOne(db, table, dirCol, id) {
+    return new Promise((resolve, reject) => {
+        db.get(
+            `SELECT id, ${dirCol} AS dir, photo_url FROM ${table} WHERE id = ?`,
+            [id],
+            (e, r) => e ? reject(e) : resolve(r)
+        );
+    });
+}
+
 async function migrateTable(db, table, idCol, dirCol) {
-    const rows = await listRows(
-        db,
-        `SELECT id, ${dirCol} AS dir, photo_url FROM ${table}
-          WHERE photo_url LIKE 'data:%'
-          ORDER BY id`
-    );
-    console.log(`\n[${table}] ${rows.length} base64 rows`);
+    // 스트리밍: id 목록만 먼저 받고 (수십KB), 한 행씩 가져와 처리하고 GC.
+    const ids = await listIds(db, table);
+    console.log(`\n[${table}] ${ids.length} base64 rows`);
 
     let extracted = 0;
     let bytesIn = 0;
     let bytesOut = 0;
     const failures = [];
 
-    for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
+    for (let i = 0; i < ids.length; i++) {
+        const row = await getRowOne(db, table, dirCol, ids[i]);
+        if (!row) continue;
         const parsed = parseDataUri(row.photo_url);
         if (!parsed) {
             failures.push({ id: row.id, reason: 'parse_failed' });
@@ -114,16 +130,19 @@ async function migrateTable(db, table, idCol, dirCol) {
             bytesOut += compressed.length;
             await runSql(db, `UPDATE ${table} SET photo_url = ? WHERE id = ?`, [publicUrl, row.id]);
             extracted++;
-            if (extracted % 20 === 0) {
-                process.stdout.write(`  ..${extracted}/${rows.length}  in=${(bytesIn / 1024 / 1024).toFixed(0)}MB out=${(bytesOut / 1024 / 1024).toFixed(1)}MB\n`);
+            if (extracted % 10 === 0) {
+                process.stdout.write(`  ..${extracted}/${ids.length}  in=${(bytesIn / 1024 / 1024).toFixed(0)}MB out=${(bytesOut / 1024 / 1024).toFixed(1)}MB\n`);
             }
         } catch (e) {
             failures.push({ id: row.id, reason: e.message });
             try { fs.unlinkSync(filePath); } catch {}
         }
+        // 각 반복에서 큰 버퍼 참조 해제
+        parsed.buf = null;
+        if (global.gc && extracted % 5 === 0) global.gc();
     }
 
-    return { extracted, total: rows.length, bytesIn, bytesOut, failures };
+    return { extracted, total: ids.length, bytesIn, bytesOut, failures };
 }
 
 function dbSize() {
