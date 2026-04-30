@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { compressImageToBase64 } from '../../utils/imageCompression';
+import EditableProductName from '../../components/EditableProductName';
 import '../../styles/mobile.css';
 
 function MobileLendingStatusPage() {
@@ -27,6 +28,8 @@ function MobileLendingStatusPage() {
     const [photoHistory, setPhotoHistory] = useState({});
     const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
     const [viewerPhotos, setViewerPhotos] = useState([]);
+    const [archivedCount, setArchivedCount] = useState(0);
+    const [showArchived, setShowArchived] = useState(false);
     const [viewerIndex, setViewerIndex] = useState(0);
     const [viewerItem, setViewerItem] = useState(null);
 
@@ -312,31 +315,63 @@ function MobileLendingStatusPage() {
         setMessage('');
     };
 
-    // 사진 보기 (전체화면 슬라이더)
+    // 사진 보기 (전체화면 슬라이더) - 기본은 활성만 표시
     const openPhotoViewer = async (itemId, item, e) => {
         e.stopPropagation();
-        setLoadingPhotoId(itemId); // 로딩 시작
+        setLoadingPhotoId(itemId);
         setMessage('📷 사진 로딩 중...');
         try {
-            let photos = photoHistory[itemId];
-            if (!photos) {
-                const res = await axios.get(`/api/lending/items/${itemId}/photos`);
-                photos = res.data;
-                setPhotoHistory(prev => ({ ...prev, [itemId]: photos }));
-            }
-            if (photos && photos.length > 0) {
+            // 활성 사진 + 카운트 병렬 조회
+            const [photosRes, countRes] = await Promise.all([
+                axios.get(`/api/lending/items/${itemId}/photos`),
+                axios.get(`/api/lending/items/${itemId}/photos/counts`).catch(() => ({ data: { archived: 0 } }))
+            ]);
+            const photos = photosRes.data || [];
+            const archived = countRes.data?.archived || 0;
+            setPhotoHistory(prev => ({ ...prev, [itemId]: photos }));
+            setArchivedCount(archived);
+            setShowArchived(false);
+
+            if (photos.length > 0) {
                 setViewerPhotos(photos);
                 setViewerIndex(0);
                 setViewerItem(item);
                 setPhotoViewerOpen(true);
-                setMessage(''); // 메시지 클리어
+                setMessage('');
+            } else if (archived > 0) {
+                // 활성 0장 + archived 있음 → 안내 + archived 즉시 표시 옵션 제공
+                if (window.confirm(`현재 출고 사진은 없습니다.\n이전 출고 이력 사진 ${archived}장이 있습니다. 보시겠습니까?`)) {
+                    await loadArchivedPhotos(itemId, item);
+                } else {
+                    setMessage('');
+                }
             } else {
                 setMessage('📷 등록된 사진이 없습니다');
             }
         } catch (error) {
             setMessage('❌ 사진 조회 실패');
         } finally {
-            setLoadingPhotoId(null); // 로딩 종료
+            setLoadingPhotoId(null);
+        }
+    };
+
+    // archived 사진 포함해서 다시 로드 (이전 출고 이력 보기)
+    const loadArchivedPhotos = async (itemId, item) => {
+        try {
+            const res = await axios.get(`/api/lending/items/${itemId}/photos?include_archived=true`);
+            const all = res.data || [];
+            if (all.length > 0) {
+                setViewerPhotos(all);
+                setViewerIndex(0);
+                setViewerItem(item);
+                setPhotoViewerOpen(true);
+                setShowArchived(true);
+                setMessage('');
+            } else {
+                setMessage('📷 사진 이력이 없습니다');
+            }
+        } catch (error) {
+            setMessage('❌ 이력 조회 실패');
         }
     };
 
@@ -628,7 +663,12 @@ function MobileLendingStatusPage() {
                                     {/* 상단: 제품명 + 상태 + 비고 + 사진 아이콘 */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
-                                            <strong style={{ fontSize: '0.9rem' }}>{item.product_name}</strong>
+                                            <EditableProductName
+                                                productId={item.product_id}
+                                                currentName={item.product_name}
+                                                labelStyle={{ fontSize: '0.9rem', fontWeight: '700' }}
+                                                onSaved={() => fetchData()}
+                                            />
                                             {getStatusBadge(item)}
                                             {(item.product_notes || item.product_repair_history) && (
                                                 <button
@@ -992,24 +1032,61 @@ function MobileLendingStatusPage() {
 
                     {/* 썸네일 */}
                     {viewerPhotos.length > 1 && (
-                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
                             {viewerPhotos.map((photo, idx) => (
-                                <img
-                                    key={idx}
-                                    src={photo.photo_url}
-                                    alt={`썸네일${idx + 1}`}
-                                    onClick={() => setViewerIndex(idx)}
-                                    style={{
-                                        width: '60px',
-                                        height: '60px',
-                                        objectFit: 'cover',
-                                        borderRadius: '4px',
-                                        border: viewerIndex === idx ? '3px solid #667eea' : '2px solid transparent',
-                                        cursor: 'pointer',
-                                        opacity: viewerIndex === idx ? 1 : 0.6
-                                    }}
-                                />
+                                <div key={idx} style={{ position: 'relative' }}>
+                                    <img
+                                        src={photo.photo_url}
+                                        alt={`썸네일${idx + 1}`}
+                                        onClick={() => setViewerIndex(idx)}
+                                        style={{
+                                            width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px',
+                                            border: viewerIndex === idx ? '3px solid #667eea' : '2px solid transparent',
+                                            cursor: 'pointer',
+                                            opacity: viewerIndex === idx ? 1 : 0.6,
+                                            filter: photo.archived_at ? 'grayscale(40%)' : 'none'
+                                        }}
+                                    />
+                                    {photo.archived_at && (
+                                        <span style={{
+                                            position: 'absolute', top: 0, right: 0,
+                                            background: photo.permanent_keep ? '#fbbf24' : '#9ca3af',
+                                            color: 'white', fontSize: '0.55rem', padding: '1px 3px',
+                                            borderRadius: '3px', lineHeight: 1
+                                        }}>
+                                            {photo.permanent_keep ? '🔒' : '📁'}
+                                        </span>
+                                    )}
+                                </div>
                             ))}
+                        </div>
+                    )}
+
+                    {/* 이전 출고 이력 보기 버튼 */}
+                    {!showArchived && archivedCount > 0 && viewerItem && (
+                        <button
+                            onClick={() => loadArchivedPhotos(viewerItem.id, viewerItem)}
+                            style={{
+                                marginTop: '1rem',
+                                padding: '0.7rem 1rem',
+                                background: 'rgba(99,102,241,0.25)',
+                                color: '#cbd5e1',
+                                border: '1px solid #4b5563',
+                                borderRadius: '8px',
+                                fontSize: '0.85rem',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            📁 이전 출고 사진 이력 {archivedCount}건 보기
+                        </button>
+                    )}
+                    {showArchived && (
+                        <div style={{
+                            marginTop: '1rem', padding: '0.5rem 0.8rem',
+                            background: 'rgba(251,191,36,0.15)', borderRadius: '6px',
+                            fontSize: '0.75rem', color: '#fde68a', textAlign: 'center'
+                        }}>
+                            📁 이전 출고 이력 포함 표시 중 (📁=90일 보관, 🔒=영구 보관)
                         </div>
                     )}
                 </div>

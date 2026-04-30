@@ -800,10 +800,16 @@ router.get('/items/:id/photos', (req, res) => {
         return res.status(400).json({ error: '아이템 ID는 필수입니다' });
     }
 
+    // 기본은 활성 사진만 (사용자 의도 = "최신 현황"). archived 보려면 ?include_archived=true.
+    const includeArchived = req.query.include_archived === 'true' || req.query.include_archived === '1';
+    const whereClause = includeArchived
+        ? `lending_item_id = ?`
+        : `lending_item_id = ? AND archived_at IS NULL`;
+
     db.all(`
         SELECT id, photo_url, uploaded_by, uploaded_at, archived_at, permanent_keep
         FROM lending_item_photos
-        WHERE lending_item_id = ?
+        WHERE ${whereClause}
         ORDER BY archived_at IS NULL DESC, archived_at DESC, uploaded_at DESC
     `, [id], (err, rows) => {
         if (err) {
@@ -827,6 +833,23 @@ router.get('/items/:id/photos', (req, res) => {
         });
         res.json(enriched);
     });
+});
+
+// 7.6b 활성 사진 개수 + archived 개수 빠른 카운트
+router.get('/items/:id/photos/counts', (req, res) => {
+    const { id } = req.params;
+    db.get(
+        `SELECT
+            SUM(CASE WHEN archived_at IS NULL THEN 1 ELSE 0 END) AS active,
+            SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END) AS archived
+         FROM lending_item_photos
+         WHERE lending_item_id = ?`,
+        [id],
+        (err, r) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ active: r.active || 0, archived: r.archived || 0 });
+        }
+    );
 });
 
 // 7.7 랜딩 아이템 개별 사진 삭제
