@@ -34,12 +34,17 @@ const db = new sqlite3.Database(dbPath, (err) => {
 // ===== 라우트 임포트 =====
 const hospitalRoutes = require('./routes/hospital-routes');
 const lendingRoutes = require('./routes/lending-routes');
-const udiRoutes = require('./routes/udi-routes');
+// UDI 라우트는 로컬 전용 (AWS 미배포). 파일이 있으면 로딩, 없으면 무시.
+let udiRoutes = null;
+try { udiRoutes = require('./routes/udi-routes'); } catch (e) {
+    if (e.code !== 'MODULE_NOT_FOUND') throw e;
+    console.log('[INFO] UDI routes not deployed (skipping)');
+}
 
 // ===== 라우트 미들웨어 =====
 app.use('/api/hospitals', hospitalRoutes);
 app.use('/api/lending', lendingRoutes);
-app.use('/api/udi', udiRoutes);
+if (udiRoutes) app.use('/api/udi', udiRoutes);
 
 // ===== 창구(채널) API =====
 // 채널 테이블 초기화
