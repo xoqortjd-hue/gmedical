@@ -51,6 +51,7 @@ function SalesEquipmentQuickPage() {
     // 업로드 진행 오버레이 (출고 다중 사진용)
     const [uploadProgress, setUploadProgress] = useState(null);
     // null | { current, total, label, percent }
+    const [inboundPhotoCount, setInboundPhotoCount] = useState(0);
     const [message, setMessage] = useState('');
 
     const cameraInputRef = useRef(null);
@@ -143,6 +144,11 @@ function SalesEquipmentQuickPage() {
             setSelectedPersonnel('');
             setNewPersonnelName('');
             setMessage('');
+            // 활성 사진 개수 미리 조회 (모달에 표시)
+            setInboundPhotoCount(0);
+            axios.get(`/api/lending/items/${item.id}/photos`)
+                .then(res => setInboundPhotoCount((res.data || []).filter(p => p.is_active).length))
+                .catch(() => {});
         }
     };
 
@@ -202,7 +208,7 @@ function SalesEquipmentQuickPage() {
     };
 
     // 입고 처리
-    const handleInbound = async () => {
+    const handleInbound = async (photoAction = 'archive') => {
         if (!modalItem) return;
         setProcessing(true);
         setMessage('⏳ 입고 처리 중...');
@@ -212,11 +218,12 @@ function SalesEquipmentQuickPage() {
 
             const movedBy = selectedPersonnel || newPersonnelName || '영업팀';
 
-            await axios.post('/api/lending/move', {
+            const res = await axios.post('/api/lending/move', {
                 lending_item_id: modalItem.id,
                 to_hospital_id: busanOffice.id,
                 moved_by: movedBy,
-                notes: `입고 처리 - ${new Date().toLocaleString('ko-KR')}`
+                notes: `입고 처리 - ${new Date().toLocaleString('ko-KR')}`,
+                photo_action: photoAction
             });
 
             // 신규 담당자 DB 저장
@@ -225,8 +232,14 @@ function SalesEquipmentQuickPage() {
                 setPersonnelList(prev => [...prev, newPersonnelName.trim()]);
             }
 
-            setMessage(`✅ ${modalItem.product_name} 입고 완료!`);
-            setTimeout(() => { closeModal(); fetchEquipmentStatus(); }, 1500);
+            const r = res.data || {};
+            const photoMsg = photoAction === 'delete'
+                ? ` (사진 ${r.photos_deleted || 0}장 즉시 삭제)`
+                : photoAction === 'permanent'
+                    ? ` (사진 ${r.photos_archived || 0}장 영구 보관)`
+                    : ` (사진 ${r.photos_archived || 0}장 보관 - 90일 후 자동삭제)`;
+            setMessage(`✅ ${modalItem.product_name} 입고 완료!${photoMsg}`);
+            setTimeout(() => { closeModal(); fetchEquipmentStatus(); }, 2200);
         } catch (error) {
             setMessage(`❌ 입고 실패: ${error.response?.data?.error || error.message}`);
         } finally {
@@ -576,13 +589,60 @@ function SalesEquipmentQuickPage() {
                             }}>{message}</div>
                         )}
 
-                        {/* 처리 버튼 */}
-                        <button onClick={handleInbound} disabled={processing} style={{
-                            width: '100%', padding: '0.8rem', borderRadius: '10px', border: 'none',
-                            fontSize: '1rem', fontWeight: '700', cursor: processing ? 'not-allowed' : 'pointer',
-                            color: 'white', background: processing ? '#9ca3af' : '#10b981'
+                        {/* 사진 처리 옵션 + 입고 버튼 */}
+                        <div style={{
+                            background: '#f8fafc', borderRadius: '8px', padding: '0.7rem',
+                            fontSize: '0.85rem', marginBottom: '0.7rem', color: '#1f2937'
                         }}>
-                            {processing ? '처리 중...' : `📥 ${modalItem.product_name} 입고 처리`}
+                            📷 출고 사진 <b>{inboundPhotoCount}장</b> 처리 방식 선택:
+                        </div>
+
+                        <button
+                            onClick={() => handleInbound('archive')}
+                            disabled={processing}
+                            style={{
+                                width: '100%', padding: '0.85rem', borderRadius: '10px',
+                                border: '2px solid #10b981', background: processing ? '#f3f4f6' : '#f0fdf4',
+                                fontSize: '0.92rem', fontWeight: '700', cursor: processing ? 'not-allowed' : 'pointer',
+                                color: processing ? '#9ca3af' : '#065f46', marginBottom: '0.55rem', textAlign: 'left'
+                            }}
+                        >
+                            🟢 보관 (90일 후 자동삭제) <span style={{ fontSize: '0.7rem', fontWeight: '500' }}>← 추천</span>
+                            <div style={{ fontSize: '0.7rem', fontWeight: '400', marginTop: '0.2rem' }}>
+                                분쟁/파손 대비 증거로 90일 보관 후 자동 삭제됩니다
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => handleInbound('permanent')}
+                            disabled={processing}
+                            style={{
+                                width: '100%', padding: '0.75rem', borderRadius: '10px',
+                                border: '1px solid #f59e0b', background: processing ? '#f3f4f6' : '#fffbeb',
+                                fontSize: '0.88rem', fontWeight: '600', cursor: processing ? 'not-allowed' : 'pointer',
+                                color: processing ? '#9ca3af' : '#78350f', marginBottom: '0.55rem', textAlign: 'left'
+                            }}
+                        >
+                            🔒 영구 보관
+                            <div style={{ fontSize: '0.7rem', fontWeight: '400', marginTop: '0.15rem' }}>
+                                분쟁 발생/특별 사유 시. 자동 삭제되지 않음
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => handleInbound('delete')}
+                            disabled={processing}
+                            style={{
+                                width: '100%', padding: '0.75rem', borderRadius: '10px',
+                                border: '1px solid #ef4444', background: processing ? '#f3f4f6' : '#fef2f2',
+                                fontSize: '0.88rem', fontWeight: '600', cursor: processing ? 'not-allowed' : 'pointer',
+                                color: processing ? '#9ca3af' : '#7f1d1d', textAlign: 'left'
+                            }}
+                        >
+                            🗑️ 즉시 삭제
+                            <div style={{ fontSize: '0.7rem', fontWeight: '400', marginTop: '0.15rem' }}>
+                                저장공간 절약. 다시 못 봅니다
+                            </div>
                         </button>
                     </div>
                 </div>

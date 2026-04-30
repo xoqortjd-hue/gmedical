@@ -524,8 +524,11 @@ router.post('/return', (req, res) => {
 });
 
 // 6. 병원 간 이동
+//   to_hospital_id == 2 (부산사무실) 일 때 = 입고완료
+//   body.photo_action: 'archive' (기본, 90일 보관 후 자동삭제) | 'delete' (즉시 삭제) | 'permanent' (영구 보관)
 router.post('/move', (req, res) => {
-    const { lending_item_id, to_hospital_id, moved_by, photo_url, notes } = req.body;
+    const { lending_item_id, to_hospital_id, moved_by, photo_url, notes, photo_action } = req.body;
+    const action = ['archive', 'delete', 'permanent'].includes(photo_action) ? photo_action : 'archive';
 
     if (!lending_item_id || !to_hospital_id) {
         return res.status(400).json({ error: '랜딩 아이템 ID와 목적지 병원은 필수입니다' });
@@ -566,25 +569,45 @@ router.post('/move', (req, res) => {
                             return res.status(500).json({ error: err.message });
                         }
 
-                        // 입고완료(=부산사무실로 이동) 시 활성 사진 archive 처리
-                        const finalize = (archivedCount = 0) => {
+                        // 입고완료(=부산사무실로 이동) 시 photo_action 에 따라 처리
+                        const finalize = (result = {}) => {
                             db.run('COMMIT');
                             res.json({
                                 success: true,
                                 message: '이동 완료',
                                 from_hospital_id: from_hospital_id,
                                 to_hospital_id: to_hospital_id,
-                                photos_archived: archivedCount
+                                photo_action: action,
+                                ...result
                             });
                         };
 
-                        if (Number(to_hospital_id) === BUSAN_OFFICE_ID) {
+                        if (Number(to_hospital_id) !== BUSAN_OFFICE_ID) {
+                            return finalize({ photos_archived: 0 });
+                        }
+
+                        if (action === 'delete') {
+                            deleteActivePhotos(lending_item_id, (delErr, n) => {
+                                if (delErr) console.warn('[move-delete]', delErr.message);
+                                finalize({ photos_deleted: n || 0 });
+                            });
+                        } else if (action === 'permanent') {
+                            // archive + permanent_keep=1 (cron 면제, 영구 보관)
+                            db.run(
+                                `UPDATE lending_item_photos
+                                    SET archived_at = CURRENT_TIMESTAMP, permanent_keep = 1
+                                  WHERE lending_item_id = ? AND archived_at IS NULL`,
+                                [lending_item_id],
+                                function (e) {
+                                    if (e) console.warn('[move-permanent]', e.message);
+                                    finalize({ photos_archived: this ? this.changes : 0, permanent: true });
+                                }
+                            );
+                        } else {
                             archiveActivePhotos(lending_item_id, (archErr, n) => {
                                 if (archErr) console.warn('[move-archive]', archErr.message);
-                                finalize(n || 0);
+                                finalize({ photos_archived: n || 0 });
                             });
-                        } else {
-                            finalize(0);
                         }
                     });
                 }

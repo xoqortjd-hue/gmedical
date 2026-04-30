@@ -36,6 +36,8 @@ function SalesInOutRegisterPage() {
     const [processing, setProcessing] = useState(false);
     // 업로드 진행 오버레이 (다중 사진 출고용)
     const [uploadProgress, setUploadProgress] = useState(null); // null | { current,total,label,percent }
+    // 입고 시 사진 처리 선택 모달
+    const [inboundConfirm, setInboundConfirm] = useState(null); // null | { item, photoCount }
 
     // 출고 폼 상태 - 다중 선택 지원
     const [selectedItems, setSelectedItems] = useState([]); // 다중 선택 배열
@@ -325,48 +327,50 @@ function SalesInOutRegisterPage() {
         return chunks;
     };
 
-    // 입고 처리 확인 후 실행
-    const confirmAndInbound = (item) => {
-        if (window.confirm(`"${item.product_name}"을(를) 입고 처리하시겠습니까?\n\n현재 위치: ${item.hospital_name}\n→ 부산사무실로 이동`)) {
-            handleInbound(item);
-        }
+    // 입고 처리 확인 - 사진 처리 옵션 모달 띄움
+    const confirmAndInbound = async (item) => {
+        let photoCount = 0;
+        try {
+            const res = await axios.get(`/api/lending/items/${item.id}/photos`);
+            photoCount = (res.data || []).filter(p => p.is_active).length;
+        } catch (e) { /* 무시 */ }
+        setInboundConfirm({ item, photoCount });
     };
 
-    // 입고 처리 (출고 → 부산사무실로 이동)
-    const handleInbound = async (item) => {
+    // 입고 실행 (사진 처리 선택값 적용)
+    const handleInbound = async (item, photoAction = 'archive') => {
         if (processing) return;
+        setInboundConfirm(null);
         setProcessing(true);
         setMessage('⏳ 입고 처리 중...');
 
         try {
-            console.log('[handleInbound] Processing item:', item.id);
-
-            // 부산사무실 ID 찾기
             const busanOffice = hospitals.find(h => h.name.includes('부산사무실'));
             if (!busanOffice) {
                 setMessage('❌ 부산사무실이 등록되어 있지 않습니다');
                 return;
             }
 
-            // 사진 아카이브 처리 (기존 사진을 archived_photos로 이동)
-            // TODO: 아카이브 API 구현 필요
-
-            // 이동 API 호출
-            await axios.post('/api/lending/move', {
+            const res = await axios.post('/api/lending/move', {
                 lending_item_id: item.id,
                 to_hospital_id: busanOffice.id,
                 moved_by: '영업팀',
-                notes: `입고 처리 - ${new Date().toLocaleString('ko-KR')}`
+                notes: `입고 처리 - ${new Date().toLocaleString('ko-KR')}`,
+                photo_action: photoAction
             });
 
-            setMessage(`✅ ${item.product_name} 입고 완료!`);
-            console.log('[handleInbound] Success');
+            const r = res.data || {};
+            const photoMsg = photoAction === 'delete'
+                ? ` (사진 ${r.photos_deleted || 0}장 즉시 삭제)`
+                : photoAction === 'permanent'
+                    ? ` (사진 ${r.photos_archived || 0}장 영구 보관)`
+                    : ` (사진 ${r.photos_archived || 0}장 보관 - 90일 후 자동삭제)`;
+            setMessage(`✅ ${item.product_name} 입고 완료!${photoMsg}`);
 
-            // 목록 새로고침
             setTimeout(() => {
                 fetchOutboundItems();
                 setMessage('');
-            }, 1500);
+            }, 2200);
         } catch (error) {
             console.error('[handleInbound] Error:', error);
             setMessage(`❌ 입고 실패: ${error.response?.data?.error || error.message}`);
@@ -1275,6 +1279,90 @@ function SalesInOutRegisterPage() {
 
             {/* 하단 네비게이션 */}
             <SalesBottomNav />
+
+            {/* 입고 시 사진 처리 선택 모달 */}
+            {inboundConfirm && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.6)', zIndex: 9998,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+                }}>
+                    <div style={{ background: 'white', borderRadius: '12px', padding: '1.4rem', width: '100%', maxWidth: '420px' }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: '700', marginBottom: '0.4rem' }}>
+                            📥 입고 처리
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#374151', marginBottom: '0.3rem' }}>
+                            <b>{inboundConfirm.item.product_name}</b>
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: '#6b7280', marginBottom: '1rem' }}>
+                            현재 위치: {inboundConfirm.item.hospital_name} → 부산사무실
+                        </div>
+
+                        <div style={{
+                            background: '#f8fafc', borderRadius: '8px', padding: '0.7rem',
+                            fontSize: '0.85rem', marginBottom: '1rem', color: '#1f2937'
+                        }}>
+                            📷 출고 사진 <b>{inboundConfirm.photoCount}장</b> 어떻게 처리할까요?
+                        </div>
+
+                        <button
+                            onClick={() => handleInbound(inboundConfirm.item, 'archive')}
+                            style={{
+                                width: '100%', padding: '0.85rem', borderRadius: '10px',
+                                border: '2px solid #10b981', background: '#f0fdf4',
+                                fontSize: '0.92rem', fontWeight: '700', cursor: 'pointer',
+                                color: '#065f46', marginBottom: '0.55rem', textAlign: 'left'
+                            }}
+                        >
+                            🟢 보관 (90일 후 자동삭제) <span style={{ fontSize: '0.7rem', color: '#047857', fontWeight: '500' }}>← 추천</span>
+                            <div style={{ fontSize: '0.7rem', color: '#047857', fontWeight: '400', marginTop: '0.2rem' }}>
+                                분쟁/파손 대비 증거로 90일 보관 후 자동 삭제됩니다
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => handleInbound(inboundConfirm.item, 'permanent')}
+                            style={{
+                                width: '100%', padding: '0.75rem', borderRadius: '10px',
+                                border: '1px solid #f59e0b', background: '#fffbeb',
+                                fontSize: '0.88rem', fontWeight: '600', cursor: 'pointer',
+                                color: '#78350f', marginBottom: '0.55rem', textAlign: 'left'
+                            }}
+                        >
+                            🔒 영구 보관
+                            <div style={{ fontSize: '0.7rem', color: '#92400e', fontWeight: '400', marginTop: '0.15rem' }}>
+                                분쟁 발생/특별 사유 시. 자동 삭제되지 않음
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => handleInbound(inboundConfirm.item, 'delete')}
+                            style={{
+                                width: '100%', padding: '0.75rem', borderRadius: '10px',
+                                border: '1px solid #ef4444', background: '#fef2f2',
+                                fontSize: '0.88rem', fontWeight: '600', cursor: 'pointer',
+                                color: '#7f1d1d', marginBottom: '0.8rem', textAlign: 'left'
+                            }}
+                        >
+                            🗑️ 즉시 삭제
+                            <div style={{ fontSize: '0.7rem', color: '#991b1b', fontWeight: '400', marginTop: '0.15rem' }}>
+                                저장공간 절약. 다시 못 봅니다
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => setInboundConfirm(null)}
+                            style={{
+                                width: '100%', padding: '0.65rem', borderRadius: '8px',
+                                border: '1px solid #d1d5db', background: 'white',
+                                fontSize: '0.85rem', cursor: 'pointer', color: '#6b7280'
+                            }}
+                        >
+                            취소
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* 업로드 진행 오버레이 */}
             {uploadProgress && (
