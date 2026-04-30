@@ -12,6 +12,12 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));  // Base64 이미지 다중 업로드를 위해 50MB로 증가
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
+// 사진 정적 제공 (DB에서 분리된 사진 파일)
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+    maxAge: '7d',
+    etag: true,
+}));
+
 // 정적 파일 제공 (클라이언트 빌드 파일)
 app.use(express.static(path.join(__dirname, 'client/build')));
 
@@ -28,10 +34,12 @@ const db = new sqlite3.Database(dbPath, (err) => {
 // ===== 라우트 임포트 =====
 const hospitalRoutes = require('./routes/hospital-routes');
 const lendingRoutes = require('./routes/lending-routes');
+const udiRoutes = require('./routes/udi-routes');
 
 // ===== 라우트 미들웨어 =====
 app.use('/api/hospitals', hospitalRoutes);
 app.use('/api/lending', lendingRoutes);
+app.use('/api/udi', udiRoutes);
 
 // ===== 창구(채널) API =====
 // 채널 테이블 초기화

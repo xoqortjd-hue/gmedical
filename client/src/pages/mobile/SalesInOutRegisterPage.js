@@ -4,6 +4,7 @@ import axios from 'axios';
 import CameraScanner from '../../components/CameraScanner';
 import SalesBottomNav from '../../components/SalesBottomNav';
 import { API_BASE_URL } from '../../config';
+import { compressImageToBase64 } from '../../utils/imageCompression';
 import '../../styles/mobile.css';
 
 // axios 기본 URL 설정
@@ -414,15 +415,8 @@ function SalesInOutRegisterPage() {
         setMessage('');
     };
 
-    // 파일을 Base64로 변환
-    const fileToBase64 = (file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    };
+    // 파일을 Base64로 변환 (1280px·q70 압축 적용)
+    const fileToBase64 = (file) => compressImageToBase64(file);
 
     // 사진 촬영/선택 핸들러
     const handlePhotoCapture = async (e, isCamera = false) => {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import SalesBottomNav from '../../components/SalesBottomNav';
 import { API_BASE_URL } from '../../config';
+import { compressImageToBase64 } from '../../utils/imageCompression';
 import '../../styles/mobile.css';
 
 axios.defaults.baseURL = API_BASE_URL;
@@ -180,12 +181,7 @@ function SalesEquipmentQuickPage() {
         setMessage('');
     };
 
-    const fileToBase64 = (file) => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
+    const fileToBase64 = (file) => compressImageToBase64(file);
 
     const handlePhotoCapture = async (e) => {
         const files = Array.from(e.target.files);

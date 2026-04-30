@@ -2,10 +2,110 @@ const express = require('express');
 const router = express.Router();
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
 // 데이터베이스 연결
 const dbPath = path.join(__dirname, '../database/inventory.db');
 const db = new sqlite3.Database(dbPath);
+
+// ===== 사진 라이프사이클 헬퍼 =====
+// 정책:
+//   - 활성 사진 = archived_at IS NULL
+//   - 입고완료 시 활성 사진 → archived_at = NOW() 로 전환 (3달 보관)
+//   - 모드 'replace': 활성 사진 삭제(파일 포함) + 새 사진 INSERT
+//   - 모드 'append': 새 사진 INSERT만
+//   - cron: archived_at < NOW()-90일 AND permanent_keep=0 → 행 삭제 + 파일 삭제
+const BUSAN_OFFICE_ID = 2;
+const PHOTO_RETENTION_DAYS = 90;
+const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
+
+function unlinkPhotoFile(photoUrl) {
+    if (!photoUrl || !photoUrl.startsWith('/uploads/')) return;
+    const rel = photoUrl.replace(/^\/uploads\//, '');
+    const abs = path.join(UPLOADS_ROOT, rel);
+    if (!abs.startsWith(UPLOADS_ROOT)) return; // path traversal 방지
+    fs.unlink(abs, (err) => {
+        if (err && err.code !== 'ENOENT') {
+            console.warn(`[photo unlink] ${abs}: ${err.message}`);
+        }
+    });
+}
+
+function archiveActivePhotos(lendingItemId, cb) {
+    db.run(
+        `UPDATE lending_item_photos
+            SET archived_at = CURRENT_TIMESTAMP
+          WHERE lending_item_id = ? AND archived_at IS NULL`,
+        [lendingItemId],
+        function (err) {
+            cb && cb(err, this ? this.changes : 0);
+        }
+    );
+}
+
+function deleteActivePhotos(lendingItemId, cb) {
+    db.all(
+        `SELECT id, photo_url FROM lending_item_photos
+          WHERE lending_item_id = ? AND archived_at IS NULL`,
+        [lendingItemId],
+        (err, rows) => {
+            if (err) return cb && cb(err);
+            if (!rows.length) return cb && cb(null, 0);
+            db.run(
+                `DELETE FROM lending_item_photos
+                  WHERE lending_item_id = ? AND archived_at IS NULL`,
+                [lendingItemId],
+                function (delErr) {
+                    if (delErr) return cb && cb(delErr);
+                    rows.forEach(r => unlinkPhotoFile(r.photo_url));
+                    cb && cb(null, rows.length);
+                }
+            );
+        }
+    );
+}
+
+function cleanupExpiredPhotos(cb) {
+    db.all(
+        `SELECT id, photo_url FROM lending_item_photos
+          WHERE archived_at IS NOT NULL
+            AND permanent_keep = 0
+            AND archived_at < datetime('now', ?)`,
+        [`-${PHOTO_RETENTION_DAYS} days`],
+        (err, rows) => {
+            if (err) return cb && cb(err);
+            if (!rows.length) return cb && cb(null, 0);
+            const ids = rows.map(r => r.id);
+            const placeholders = ids.map(() => '?').join(',');
+            db.run(
+                `DELETE FROM lending_item_photos WHERE id IN (${placeholders})`,
+                ids,
+                function (delErr) {
+                    if (delErr) return cb && cb(delErr);
+                    rows.forEach(r => unlinkPhotoFile(r.photo_url));
+                    cb && cb(null, rows.length);
+                }
+            );
+        }
+    );
+}
+
+// 서버 시작 시 + 24h 마다 cron 실행
+setTimeout(() => {
+    cleanupExpiredPhotos((err, n) => {
+        if (err) console.error('[photo cleanup] startup:', err.message);
+        else if (n) console.log(`[photo cleanup] startup deleted ${n} expired photos`);
+    });
+}, 30 * 1000);
+
+setInterval(() => {
+    cleanupExpiredPhotos((err, n) => {
+        if (err) console.error('[photo cleanup] daily:', err.message);
+        else if (n) console.log(`[photo cleanup] daily deleted ${n} expired photos`);
+    });
+}, 24 * 60 * 60 * 1000);
+
+router.cleanupExpiredPhotos = cleanupExpiredPhotos;
 
 // 1. 전체 랜딩 현황 조회
 router.get('/items', (req, res) => {
@@ -406,10 +506,15 @@ router.post('/return', (req, res) => {
                             return res.status(500).json({ error: err.message });
                         }
 
-                        db.run('COMMIT');
-                        res.json({
-                            success: true,
-                            message: '랜딩 회수 완료'
+                        // 회수=입고이므로 활성 사진 archive
+                        archiveActivePhotos(lending_item_id, (archErr, n) => {
+                            if (archErr) console.warn('[return-archive]', archErr.message);
+                            db.run('COMMIT');
+                            res.json({
+                                success: true,
+                                message: '랜딩 회수 완료',
+                                photos_archived: n || 0
+                            });
                         });
                     });
                 }
@@ -461,13 +566,26 @@ router.post('/move', (req, res) => {
                             return res.status(500).json({ error: err.message });
                         }
 
-                        db.run('COMMIT');
-                        res.json({
-                            success: true,
-                            message: '이동 완료',
-                            from_hospital_id: from_hospital_id,
-                            to_hospital_id: to_hospital_id
-                        });
+                        // 입고완료(=부산사무실로 이동) 시 활성 사진 archive 처리
+                        const finalize = (archivedCount = 0) => {
+                            db.run('COMMIT');
+                            res.json({
+                                success: true,
+                                message: '이동 완료',
+                                from_hospital_id: from_hospital_id,
+                                to_hospital_id: to_hospital_id,
+                                photos_archived: archivedCount
+                            });
+                        };
+
+                        if (Number(to_hospital_id) === BUSAN_OFFICE_ID) {
+                            archiveActivePhotos(lending_item_id, (archErr, n) => {
+                                if (archErr) console.warn('[move-archive]', archErr.message);
+                                finalize(n || 0);
+                            });
+                        } else {
+                            finalize(0);
+                        }
                     });
                 }
             );
@@ -541,63 +659,114 @@ router.delete('/items/:id', (req, res) => {
     });
 });
 
-// 7.5 랜딩 아이템 사진 업로드 (최근 10장 유지)
+// 7.5 랜딩 아이템 사진 업로드
+//   mode='replace' (기본): 기존 활성 사진을 삭제 후 새 사진 INSERT
+//   mode='append': 기존 활성 사진은 그대로 두고 새 사진만 INSERT
 router.put('/items/:id/photo', (req, res) => {
     const { id } = req.params;
-    const { photo_url, uploaded_by } = req.body;
-    const MAX_PHOTOS = 10; // 최대 유지할 사진 수 (3장 → 10장으로 변경)
+    const { photo_url, uploaded_by, mode } = req.body;
+    const uploadMode = mode === 'append' ? 'append' : 'replace';
 
-    console.log(`📤 [PUT /items/${id}/photo] 사진 업로드 요청 - 업로더: ${uploaded_by || '미지정'}`);
+    if (!id) return res.status(400).json({ error: '아이템 ID는 필수입니다' });
+    if (!photo_url) return res.status(400).json({ error: '사진 데이터가 필요합니다' });
 
-    if (!id) {
-        console.error(`❌ [PUT /items/:id/photo] 아이템 ID 누락`);
-        return res.status(400).json({ error: '아이템 ID는 필수입니다' });
+    console.log(`📤 [PUT /items/${id}/photo] mode=${uploadMode} 업로더=${uploaded_by || '미지정'} size=${(photo_url.length / 1024).toFixed(1)}KB`);
+
+    const insertNew = () => {
+        db.run(
+            `INSERT INTO lending_item_photos (lending_item_id, photo_url, uploaded_by)
+             VALUES (?, ?, ?)`,
+            [id, photo_url, uploaded_by || '영업담당자'],
+            function (err) {
+                if (err) {
+                    console.error(`❌ [photo INSERT] ${err.message}`);
+                    return res.status(500).json({ error: err.message });
+                }
+                const newPhotoId = this.lastID;
+                db.run(
+                    `UPDATE lending_items
+                        SET photo_url = ?, photo_uploaded_by = ?, photo_uploaded_at = CURRENT_TIMESTAMP
+                      WHERE id = ?`,
+                    [photo_url, uploaded_by || '영업담당자', id]
+                );
+                res.json({
+                    success: true,
+                    message: uploadMode === 'replace' ? '사진이 교체되었습니다' : '사진이 추가되었습니다',
+                    item_id: id,
+                    photo_id: newPhotoId,
+                    mode: uploadMode
+                });
+            }
+        );
+    };
+
+    if (uploadMode === 'replace') {
+        deleteActivePhotos(id, (delErr, deletedCount) => {
+            if (delErr) {
+                console.error(`❌ [active-delete] ${delErr.message}`);
+                return res.status(500).json({ error: delErr.message });
+            }
+            console.log(`🗑️ [photo replace] active deleted=${deletedCount}`);
+            insertNew();
+        });
+    } else {
+        insertNew();
     }
+});
 
-    if (!photo_url) {
-        console.error(`❌ [PUT /items/${id}/photo] 사진 데이터 누락`);
-        return res.status(400).json({ error: '사진 데이터가 필요합니다' });
-    }
+// 7.5b 사진 영구보관 플래그 토글
+router.put('/photos/:photoId/permanent', (req, res) => {
+    const { photoId } = req.params;
+    const { permanent } = req.body;
+    const flag = permanent ? 1 : 0;
+    db.run(
+        `UPDATE lending_item_photos SET permanent_keep = ? WHERE id = ?`,
+        [flag, photoId],
+        function (err) {
+            if (err) return res.status(500).json({ error: err.message });
+            if (this.changes === 0) return res.status(404).json({ error: '사진을 찾을 수 없습니다' });
+            res.json({ success: true, photo_id: photoId, permanent_keep: flag });
+        }
+    );
+});
 
-    // 용량 제한 제거됨 - 사용자 요청에 따라 제한 없음
-    const photoSize = photo_url.length;
-    console.log(`📊 [PUT /items/${id}/photo] 사진 데이터 크기: ${(photoSize / 1024).toFixed(1)}KB`);
+// 7.5c 사진 이력 조회 (활성 + archived 그룹핑)
+router.get('/items/:id/photo-cycles', (req, res) => {
+    const { id } = req.params;
+    db.all(
+        `SELECT id, photo_url, uploaded_by, uploaded_at, archived_at, permanent_keep
+           FROM lending_item_photos
+          WHERE lending_item_id = ?
+          ORDER BY archived_at IS NULL DESC, archived_at DESC, uploaded_at DESC`,
+        [id],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            const active = rows.filter(r => !r.archived_at);
+            const archived = rows.filter(r => r.archived_at);
 
-    db.serialize(() => {
-        // 새 사진 추가 (기존 사진 삭제는 프론트엔드에서 DELETE API로 처리됨)
-        db.run(`
-            INSERT INTO lending_item_photos (lending_item_id, photo_url, uploaded_by)
-            VALUES (?, ?, ?)
-        `, [id, photo_url, uploaded_by || '영업담당자'], function (err) {
-            if (err) {
-                console.error(`❌ [PUT /items/${id}/photo] 사진 저장 실패:`, err.message);
-                return res.status(500).json({ error: err.message });
+            // 같은 archived_at 으로 묶어서 사이클 그룹핑 (1초 이내 같은 입고 이벤트로 간주)
+            const cycles = [];
+            for (const r of archived) {
+                const ts = new Date(r.archived_at).getTime();
+                let bucket = cycles.find(c => Math.abs(c.archived_ts - ts) < 5000);
+                if (!bucket) {
+                    bucket = { archived_at: r.archived_at, archived_ts: ts, photos: [] };
+                    cycles.push(bucket);
+                }
+                bucket.photos.push(r);
             }
 
-            const newPhotoId = this.lastID;
-            console.log(`✅ [PUT /items/${id}/photo] 사진 저장 완료 - photo_id: ${newPhotoId}`);
-
-            // 3. lending_items 테이블도 최신 사진으로 업데이트 (호환성)
-            db.run(`
-                UPDATE lending_items 
-                SET photo_url = ?, 
-                    photo_uploaded_by = ?, 
-                    photo_uploaded_at = CURRENT_TIMESTAMP 
-                WHERE id = ?
-            `, [photo_url, uploaded_by || '영업담당자', id], (updateErr) => {
-                if (updateErr) {
-                    console.error(`⚠️ [PUT /items/${id}/photo] lending_items 업데이트 실패:`, updateErr.message);
-                }
+            const now = Date.now();
+            const retentionMs = PHOTO_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+            cycles.forEach(c => {
+                const remainMs = (c.archived_ts + retentionMs) - now;
+                c.days_until_delete = Math.max(0, Math.ceil(remainMs / (24 * 60 * 60 * 1000)));
+                c.expires_at = new Date(c.archived_ts + retentionMs).toISOString();
             });
 
-            res.json({
-                success: true,
-                message: '사진이 업로드되었습니다',
-                item_id: id,
-                photo_id: newPhotoId
-            });
-        });
-    });
+            res.json({ active, cycles });
+        }
+    );
 });
 
 // 7.6 랜딩 아이템 사진 이력 조회
@@ -609,16 +778,31 @@ router.get('/items/:id/photos', (req, res) => {
     }
 
     db.all(`
-        SELECT id, photo_url, uploaded_by, uploaded_at
+        SELECT id, photo_url, uploaded_by, uploaded_at, archived_at, permanent_keep
         FROM lending_item_photos
         WHERE lending_item_id = ?
-        ORDER BY uploaded_at DESC
+        ORDER BY archived_at IS NULL DESC, archived_at DESC, uploaded_at DESC
     `, [id], (err, rows) => {
         if (err) {
             console.error('사진 이력 조회 실패:', err.message);
             return res.status(500).json({ error: err.message });
         }
-        res.json(rows || []);
+        // 만료까지 남은 일수 계산
+        const retentionMs = PHOTO_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        const enriched = (rows || []).map(r => {
+            if (r.archived_at) {
+                const archivedTs = new Date(r.archived_at).getTime();
+                const remainMs = (archivedTs + retentionMs) - now;
+                return {
+                    ...r,
+                    days_until_delete: Math.max(0, Math.ceil(remainMs / (24 * 60 * 60 * 1000))),
+                    is_active: false
+                };
+            }
+            return { ...r, days_until_delete: null, is_active: true };
+        });
+        res.json(enriched);
     });
 });
 
@@ -630,8 +814,15 @@ router.delete('/items/:id/photos/:photoId', (req, res) => {
         return res.status(400).json({ error: '아이템 ID와 사진 ID는 필수입니다' });
     }
 
+    // 파일 unlink 위해 photo_url 먼저 조회
+    db.get(
+        `SELECT photo_url FROM lending_item_photos WHERE id = ? AND lending_item_id = ?`,
+        [photoId, id],
+        (selErr, selRow) => {
+            const fileToUnlink = selRow ? selRow.photo_url : null;
+
     db.run(`
-        DELETE FROM lending_item_photos 
+        DELETE FROM lending_item_photos
         WHERE id = ? AND lending_item_id = ?
     `, [photoId, id], function (err) {
         if (err) {
@@ -642,6 +833,8 @@ router.delete('/items/:id/photos/:photoId', (req, res) => {
         if (this.changes === 0) {
             return res.status(404).json({ error: '사진을 찾을 수 없습니다' });
         }
+
+        if (fileToUnlink) unlinkPhotoFile(fileToUnlink);
 
         // 최신 사진으로 lending_items 테이블 업데이트
         db.get(`
@@ -670,6 +863,8 @@ router.delete('/items/:id/photos/:photoId', (req, res) => {
         console.log(`🗑️ 사진 삭제 완료: 아이템 ID ${id}, 사진 ID ${photoId}`);
         res.json({ success: true, message: '사진이 삭제되었습니다' });
     });
+        }
+    );
 });
 
 // 7.8 랜딩 아이템 전체 사진 삭제
@@ -682,9 +877,21 @@ router.delete('/items/:id/photos', (req, res) => {
         return res.status(400).json({ error: '아이템 ID는 필수입니다' });
     }
 
+    // 기본은 활성 사진만 삭제 (archived 보호). ?all=true 면 archived 포함 전체 삭제.
+    const includeArchived = req.query.all === 'true' || req.query.all === '1';
+    const whereClause = includeArchived
+        ? `lending_item_id = ?`
+        : `lending_item_id = ? AND archived_at IS NULL`;
+
+    db.all(
+        `SELECT photo_url FROM lending_item_photos WHERE ${whereClause}`,
+        [id],
+        (selErr, photoRows) => {
+            const filesToUnlink = (photoRows || []).map(r => r.photo_url);
+
     db.run(`
-        DELETE FROM lending_item_photos 
-        WHERE lending_item_id = ?
+        DELETE FROM lending_item_photos
+        WHERE ${whereClause}
     `, [id], function (err) {
         if (err) {
             console.error(`❌ [DELETE /items/${id}/photos] 삭제 실패:`, err.message);
@@ -694,9 +901,11 @@ router.delete('/items/:id/photos', (req, res) => {
         const deletedCount = this.changes;
         console.log(`✅ [DELETE /items/${id}/photos] ${deletedCount}장 삭제 완료`);
 
+        filesToUnlink.forEach(unlinkPhotoFile);
+
         // lending_items 테이블도 업데이트
         db.run(`
-            UPDATE lending_items 
+            UPDATE lending_items
             SET photo_url = NULL, photo_uploaded_by = NULL, photo_uploaded_at = NULL
             WHERE id = ?
         `, [id], (updateErr) => {
@@ -709,6 +918,8 @@ router.delete('/items/:id/photos', (req, res) => {
 
         res.json({ success: true, message: `${deletedCount}장의 사진이 삭제되었습니다`, deleted_count: deletedCount });
     });
+        }
+    );
 });
 
 // 8. 병원별 카테고리 요약 조회 (CEO 대시보드용)

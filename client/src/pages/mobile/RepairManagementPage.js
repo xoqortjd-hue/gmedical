@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import SalesBottomNav from '../../components/SalesBottomNav';
 import { API_BASE_URL } from '../../config';
+import { compressImageToBase64 } from '../../utils/imageCompression';
 import '../../styles/mobile.css';
 
 axios.defaults.baseURL = API_BASE_URL;
@@ -89,12 +90,7 @@ function RepairManagementPage() {
         } catch (e) {}
     };
 
-    const fileToBase64 = (file) => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
+    const fileToBase64 = (file) => compressImageToBase64(file);
 
     // 사진 촬영/선택 핸들러 (다중)
     const handlePhotos = async (e, setter) => {

@@ -3,6 +3,7 @@ import axios from 'axios';
 import CameraScanner from '../../components/CameraScanner';
 import ManualBarcodeInput from '../../components/ManualBarcodeInput';
 import { API_BASE_URL } from '../../config';
+import { compressImageToBase64 } from '../../utils/imageCompression';
 import '../../styles/mobile.css';
 
 // axios 기본 URL 설정
@@ -334,15 +335,8 @@ function MobileLendingPage() {
         }
     };
 
-    // 파일을 Base64로 변환
-    const fileToBase64 = (file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    };
+    // 파일을 Base64로 변환 (1280px·q70 압축 적용)
+    const fileToBase64 = (file) => compressImageToBase64(file);
 
     // 이미지 촬영 처리
     const handleImageCapture = async (e) => {

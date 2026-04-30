@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import { compressImageToBase64 } from '../../utils/imageCompression';
 import '../../styles/mobile.css';
 
 function MobileLendingStatusPage() {
@@ -36,6 +37,7 @@ function MobileLendingStatusPage() {
     const [captureMode, setCaptureMode] = useState(false);
     const [capturedPhotos, setCapturedPhotos] = useState([]);
     const [captureItemId, setCaptureItemId] = useState(null);
+    const [captureUploadMode, setCaptureUploadMode] = useState('replace'); // 'replace' | 'append'
     const fileInputRef = useRef(null);
     const cameraInputRef = useRef(null);
 
@@ -146,7 +148,8 @@ function MobileLendingStatusPage() {
     };
 
     // 앨범에서 바로 등록
-    const handleAlbumUpload = (itemId, e) => {
+    const handleAlbumUpload = (itemId, e, modeArg) => {
+        const mode = modeArg === 'append' ? 'append' : 'replace';
         e.stopPropagation();
         const input = document.createElement('input');
         input.type = 'file';
@@ -168,21 +171,15 @@ function MobileLendingStatusPage() {
             setUploadDropdownId(null);
 
             try {
-                // 1. 기존 사진 삭제 (덮어쓰기)
-                console.log(`🗑️ [handleAlbumUpload] 기존 사진 삭제 시작 - itemId: ${itemId}`);
-                setMessage('🗑️ 기존 사진 삭제 중...');
-                const deleteRes = await axios.delete(`/api/lending/items/${itemId}/photos`);
-                console.log(`✅ [handleAlbumUpload] 기존 사진 ${deleteRes.data.deleted_count}장 삭제 완료`);
-
-                // 2. 새 사진 업로드
+                // 첫 사진은 mode 그대로 (replace 면 기존 활성 사진 자동 교체), 이후는 append
                 const totalFiles = files.length;
                 for (let i = 0; i < totalFiles; i++) {
-                    console.log(`📤 [handleAlbumUpload] 사진 업로드 중... (${i + 1}/${totalFiles})`);
                     setMessage(`📤 업로드 중... (${i + 1}/${totalFiles})`);
                     const base64 = await fileToBase64(files[i]);
                     await axios.put(`/api/lending/items/${itemId}/photo`, {
                         photo_url: base64,
-                        uploaded_by: uploaderName.trim()
+                        uploaded_by: uploaderName.trim(),
+                        mode: i === 0 ? mode : 'append'
                     });
                 }
                 console.log(`✅ [handleAlbumUpload] 업로드 완료 - ${totalFiles}장`);
@@ -200,22 +197,16 @@ function MobileLendingStatusPage() {
         input.click();
     };
 
-    // 파일을 Base64로 변환
-    const fileToBase64 = (file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    };
+    // 파일을 Base64로 변환 (1280px·q70 압축 적용)
+    const fileToBase64 = (file) => compressImageToBase64(file);
 
     // 촬영 모드 시작
-    const startCaptureMode = (itemId, e) => {
+    const startCaptureMode = (itemId, e, modeArg) => {
         e.stopPropagation();
         setCaptureItemId(itemId);
         setCapturedPhotos([]);
         setCaptureMode(true);
+        setCaptureUploadMode(modeArg === 'append' ? 'append' : 'replace');
         setUploadDropdownId(null);
         // 카메라 열기
         setTimeout(() => {
@@ -278,16 +269,13 @@ function MobileLendingStatusPage() {
         const totalPhotos = capturedPhotos.length;
 
         try {
-            // 1. 먼저 기존 사진 모두 삭제 (한 번만!)
-            setMessage('🗑️ 기존 사진 삭제 중...');
-            await axios.delete(`/api/lending/items/${captureItemId}/photos`);
-
-            // 2. 새 사진들 업로드
+            // 첫 사진은 captureUploadMode (replace=교체, append=추가), 이후는 append
             for (let i = 0; i < totalPhotos; i++) {
                 setMessage(`📤 업로드 중... (${i + 1}/${totalPhotos})`);
                 await axios.put(`/api/lending/items/${captureItemId}/photo`, {
                     photo_url: capturedPhotos[i],
-                    uploaded_by: uploaderName.trim()
+                    uploaded_by: uploaderName.trim(),
+                    mode: i === 0 ? captureUploadMode : 'append'
                 });
             }
             setMessage(`✅ ${uploaderName.trim()}님의 사진 ${totalPhotos}장이 업로드되었습니다`);
@@ -704,33 +692,48 @@ function MobileLendingStatusPage() {
                                                         marginTop: '2px'
                                                     }}>
                                                         <button
-                                                            onClick={(e) => handleAlbumUpload(item.id, e)}
+                                                            onClick={(e) => handleAlbumUpload(item.id, e, 'replace')}
                                                             style={{
-                                                                width: '100%',
-                                                                padding: '0.6rem',
-                                                                border: 'none',
-                                                                background: 'white',
-                                                                textAlign: 'left',
-                                                                fontSize: '0.8rem',
-                                                                cursor: 'pointer',
+                                                                width: '100%', padding: '0.6rem', border: 'none',
+                                                                background: 'white', textAlign: 'left',
+                                                                fontSize: '0.8rem', cursor: 'pointer',
                                                                 borderBottom: '1px solid #eee'
                                                             }}
                                                         >
-                                                            🖼️ 앨범에서 등록
+                                                            🖼️ 앨범에서 새로등록 (기존 교체)
                                                         </button>
                                                         <button
-                                                            onClick={(e) => startCaptureMode(item.id, e)}
+                                                            onClick={(e) => startCaptureMode(item.id, e, 'replace')}
                                                             style={{
-                                                                width: '100%',
-                                                                padding: '0.6rem',
-                                                                border: 'none',
-                                                                background: 'white',
-                                                                textAlign: 'left',
-                                                                fontSize: '0.8rem',
-                                                                cursor: 'pointer'
+                                                                width: '100%', padding: '0.6rem', border: 'none',
+                                                                background: 'white', textAlign: 'left',
+                                                                fontSize: '0.8rem', cursor: 'pointer',
+                                                                borderBottom: '1px solid #eee'
                                                             }}
                                                         >
-                                                            📸 촬영하기
+                                                            📸 새로 촬영 (기존 교체)
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => handleAlbumUpload(item.id, e, 'append')}
+                                                            style={{
+                                                                width: '100%', padding: '0.6rem', border: 'none',
+                                                                background: '#f0fdf4', textAlign: 'left',
+                                                                fontSize: '0.8rem', cursor: 'pointer',
+                                                                borderBottom: '1px solid #eee', color: '#15803d'
+                                                            }}
+                                                        >
+                                                            ➕ 앨범에서 추가
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => startCaptureMode(item.id, e, 'append')}
+                                                            style={{
+                                                                width: '100%', padding: '0.6rem', border: 'none',
+                                                                background: '#f0fdf4', textAlign: 'left',
+                                                                fontSize: '0.8rem', cursor: 'pointer',
+                                                                color: '#15803d'
+                                                            }}
+                                                        >
+                                                            ➕ 촬영해서 추가
                                                         </button>
                                                     </div>
                                                 )}
@@ -923,6 +926,68 @@ function MobileLendingStatusPage() {
                         <p style={{ margin: '0.3rem 0', fontSize: '0.8rem' }}>
                             🏥 {viewerItem?.hospital_name}
                         </p>
+                        {/* archive 상태 / 만료 / 영구보관 */}
+                        {viewerPhotos[viewerIndex]?.archived_at && (() => {
+                            const p = viewerPhotos[viewerIndex];
+                            const days = p.days_until_delete;
+                            const isPerm = !!p.permanent_keep;
+                            const dangerColor = days <= 7 ? '#ef4444' : (days <= 30 ? '#f59e0b' : '#9ca3af');
+                            return (
+                                <div style={{
+                                    margin: '0.6rem auto 0',
+                                    padding: '0.5rem 0.8rem',
+                                    background: isPerm ? '#1e3a5f' : '#3f3f46',
+                                    borderRadius: '8px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.6rem',
+                                    fontSize: '0.8rem'
+                                }}>
+                                    <span style={{ color: '#e5e7eb' }}>
+                                        📁 보관 (입고 {formatDateTime(p.archived_at)})
+                                    </span>
+                                    {!isPerm && (
+                                        <span style={{ color: dangerColor, fontWeight: 'bold' }}>
+                                            ⏰ {days}일 후 자동삭제
+                                        </span>
+                                    )}
+                                    {isPerm && (
+                                        <span style={{ color: '#fbbf24' }}>🔒 영구보관</span>
+                                    )}
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                const res = await axios.put(
+                                                    `/api/lending/photos/${p.id}/permanent`,
+                                                    { permanent: !isPerm }
+                                                );
+                                                const updated = viewerPhotos.map(x =>
+                                                    x.id === p.id ? { ...x, permanent_keep: res.data.permanent_keep } : x
+                                                );
+                                                setViewerPhotos(updated);
+                                                if (viewerItem) {
+                                                    setPhotoHistory(prev => ({ ...prev, [viewerItem.id]: updated }));
+                                                }
+                                            } catch (err) {
+                                                setMessage('❌ 영구보관 설정 실패');
+                                            }
+                                        }}
+                                        style={{
+                                            padding: '0.3rem 0.7rem',
+                                            background: isPerm ? '#fbbf24' : '#10b981',
+                                            color: isPerm ? '#1f2937' : 'white',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold'
+                                        }}
+                                    >
+                                        {isPerm ? '🔓 보관 해제' : '🔒 영구보관'}
+                                    </button>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* 썸네일 */}
