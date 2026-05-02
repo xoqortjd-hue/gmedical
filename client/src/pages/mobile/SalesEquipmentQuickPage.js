@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import SalesBottomNav from '../../components/SalesBottomNav';
+import EditableProductName from '../../components/EditableProductName';
 import { API_BASE_URL } from '../../config';
 import { compressImageToBase64 } from '../../utils/imageCompression';
 import '../../styles/mobile.css';
@@ -464,7 +465,13 @@ function SalesEquipmentQuickPage() {
                                                         }}>✓</div>
                                                     )}
                                                     <div style={{ fontWeight: '600', fontSize: '0.85rem', color: '#1f2937', marginBottom: '0.3rem' }}>
-                                                        {item.product_name}
+                                                        <EditableProductName
+                                                            productId={item.product_id}
+                                                            currentName={item.product_name}
+                                                            labelStyle={{ fontWeight: '600' }}
+                                                            onSaved={() => fetchEquipmentStatus()}
+                                                            compact
+                                                        />
                                                     </div>
                                                     <span style={{
                                                         display: 'inline-block', padding: '2px 8px', borderRadius: '4px',

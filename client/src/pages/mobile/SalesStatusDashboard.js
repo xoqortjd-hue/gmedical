@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import EditableProductName from '../../components/EditableProductName';
 import axios from 'axios';
 import SalesBottomNav from '../../components/SalesBottomNav';
 import { API_BASE_URL } from '../../config';
@@ -519,7 +520,13 @@ function SalesStatusDashboard() {
                                                                 textAlign: 'center',
                                                                 wordBreak: 'break-word'
                                                             }}>
-                                                                {item.name}
+                                                                <EditableProductName
+                                                                    productId={item.product_id}
+                                                                    currentName={item.name}
+                                                                    labelStyle={{ fontWeight: 'bold' }}
+                                                                    onSaved={() => fetchEquipmentStatus()}
+                                                                    compact
+                                                                />
                                                             </div>
                                                             <button
                                                                 onClick={() => fetchItemDetail(item)}
