@@ -32,6 +32,12 @@ function SalesStatusDashboard() {
     const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(null); // 확대 보기용 사진 인덱스
     const [touchStart, setTouchStart] = useState(null); // 터치 시작 위치
     const [ownershipEditMode, setOwnershipEditMode] = useState(false); // 자사/타사 수정 모드
+    const [manageMode, setManageMode] = useState(false); // 등록/삭제 버튼 노출
+    const [registerModal, setRegisterModal] = useState(null); // { baseName, suggestedNumber }
+    const [registering, setRegistering] = useState(false);
+    const [registerError, setRegisterError] = useState('');
+    const [registerNumber, setRegisterNumber] = useState('');
+    const [deletingId, setDeletingId] = useState(null);
 
     // 디버그 로그
     console.log('[SalesStatusDashboard] Rendering');
@@ -287,6 +293,62 @@ function SalesStatusDashboard() {
         return chunks;
     };
 
+    // 등록 모달 열기 - subGroup 의 baseName 으로 다음 번호 자동 추천
+    const openRegisterModal = (subGroup) => {
+        let maxNum = 0;
+        subGroup.items.forEach(it => {
+            const m = (it.number || it.name || '').match(/#(\d+)/);
+            if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+        });
+        const suggested = `#${maxNum + 1}`;
+        setRegisterModal({ baseName: subGroup.baseName, suggestedNumber: suggested });
+        setRegisterNumber(suggested);
+        setRegisterError('');
+    };
+
+    // 등록 실행
+    const handleRegister = async () => {
+        if (!registerModal) return;
+        const number = (registerNumber || '').trim();
+        if (!number) { setRegisterError('번호를 입력하세요 (예: #9)'); return; }
+        const fullName = `${registerModal.baseName}${number.startsWith('#') ? number : '#' + number}`;
+        setRegistering(true);
+        setRegisterError('');
+        try {
+            await axios.post('/api/products', {
+                name: fullName,
+                barcode: `EQ${Date.now()}`,
+                category: 'EQUIPMENT'
+            });
+            setRegisterModal(null);
+            setRegisterNumber('');
+            await fetchEquipmentStatus();
+        } catch (e) {
+            setRegisterError(e.response?.data?.error || e.message || '등록 실패');
+        } finally {
+            setRegistering(false);
+        }
+    };
+
+    // 장비 삭제 (제품 + 모든 lending_items + 이동 이력 cascade)
+    const handleDelete = async (item) => {
+        if (!window.confirm(
+            `[${item.name}] 을(를) 완전 삭제하시겠습니까?\n\n` +
+            `• 제품 + 모든 이동 이력 + 사진 메타데이터 함께 삭제\n` +
+            `• 출고 상태면 먼저 입고 처리 필요\n` +
+            `• 되돌릴 수 없음`
+        )) return;
+        setDeletingId(item.id);
+        try {
+            await axios.delete(`/api/products/${item.product_id}`);
+            await fetchEquipmentStatus();
+        } catch (e) {
+            alert(`삭제 실패: ${e.response?.data?.error || e.message}`);
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
     // 상세 정보 조회 (이동 이력 + 사진)
     const fetchItemDetail = async (item) => {
         setSelectedItem(item);
@@ -433,6 +495,43 @@ function SalesStatusDashboard() {
                 </button>
             </div>
 
+            {/* 등록/삭제 관리 모드 토글 */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.75rem',
+                padding: '0.5rem 0.75rem',
+                background: manageMode ? '#dbeafe' : 'white',
+                borderRadius: '8px',
+                border: manageMode ? '1px solid #3b82f6' : '1px solid #e5e7eb',
+                transition: 'all 0.2s'
+            }}>
+                <span style={{ fontSize: '0.8rem', color: manageMode ? '#1e40af' : '#64748b' }}>
+                    {manageMode ? '🛠 등록/삭제 활성' : '🔒 등록/삭제 잠금'}
+                </span>
+                <button
+                    onClick={() => setManageMode(!manageMode)}
+                    style={{
+                        position: 'relative',
+                        width: '44px', height: '24px',
+                        borderRadius: '12px', border: 'none', cursor: 'pointer',
+                        background: manageMode ? '#3b82f6' : '#d1d5db',
+                        transition: 'background 0.2s'
+                    }}
+                >
+                    <span style={{
+                        position: 'absolute',
+                        top: '2px', left: manageMode ? '22px' : '2px',
+                        width: '20px', height: '20px',
+                        borderRadius: '50%', background: 'white',
+                        transition: 'left 0.2s',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                    }} />
+                </button>
+            </div>
+
             {/* 대시보드 그리드 */}
             {loading ? (
                 <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
@@ -503,13 +602,35 @@ function SalesStatusDashboard() {
                                                     padding: '0.5rem',
                                                     borderRadius: '8px',
                                                     background: item ? (item.ownership === 'CONSIGNED' ? '#fef9e7' : '#e8f4fd') : 'transparent',
-                                                    border: item ? `1.5px solid ${item.ownership === 'CONSIGNED' ? '#f59e0b' : '#3b82f6'}` : 'none',
+                                                    border: item ? `1.5px solid ${item.ownership === 'CONSIGNED' ? '#f59e0b' : '#3b82f6'}` : (manageMode ? '1px dashed #cbd5e1' : 'none'),
                                                     minHeight: '50px',
                                                     display: 'flex',
                                                     flexDirection: 'column',
                                                     alignItems: 'center',
-                                                    justifyContent: 'center'
+                                                    justifyContent: 'center',
+                                                    position: 'relative'
                                                 }}>
+                                                    {/* 삭제 버튼 (관리 모드에서만 노출) */}
+                                                    {item && manageMode && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
+                                                            disabled={deletingId === item.id}
+                                                            title="삭제"
+                                                            style={{
+                                                                position: 'absolute', top: '2px', right: '2px',
+                                                                width: '18px', height: '18px', borderRadius: '50%',
+                                                                background: deletingId === item.id ? '#fca5a5' : '#ef4444',
+                                                                color: 'white', border: 'none',
+                                                                cursor: deletingId === item.id ? 'wait' : 'pointer',
+                                                                fontSize: '0.6rem', fontWeight: 'bold',
+                                                                padding: 0, lineHeight: 1,
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                                zIndex: 2
+                                                            }}
+                                                        >
+                                                            {deletingId === item.id ? '...' : '✕'}
+                                                        </button>
+                                                    )}
                                                     {item && (
                                                         <>
                                                             <div style={{
@@ -567,10 +688,114 @@ function SalesStatusDashboard() {
                                             ))}
                                         </div>
                                     ))}
+                                    {/* + 등록 버튼 (관리 모드에서만) */}
+                                    {manageMode && (
+                                        <button
+                                            onClick={() => openRegisterModal(subGroup)}
+                                            style={{
+                                                marginTop: '0.4rem',
+                                                marginLeft: group.isFamily ? '0.5rem' : 0,
+                                                padding: '0.5rem 0.8rem',
+                                                background: '#dbeafe',
+                                                color: '#1e40af',
+                                                border: '1.5px dashed #3b82f6',
+                                                borderRadius: '8px',
+                                                fontSize: '0.78rem',
+                                                fontWeight: '600',
+                                                cursor: 'pointer',
+                                                width: '100%'
+                                            }}
+                                        >
+                                            ➕ {subGroup.baseName} 새 번호 등록
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* 등록 모달 */}
+            {registerModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.6)', zIndex: 9998,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+                }}>
+                    <div style={{ background: 'white', borderRadius: '12px', padding: '1.4rem', width: '100%', maxWidth: '420px' }}>
+                        <div style={{ fontSize: '1.05rem', fontWeight: '700', marginBottom: '0.5rem' }}>
+                            ➕ 새 기구 등록
+                        </div>
+                        <div style={{ fontSize: '0.85rem', color: '#374151', marginBottom: '0.8rem' }}>
+                            계열: <b>{registerModal.baseName}</b>
+                        </div>
+
+                        <label style={{ fontSize: '0.8rem', color: '#374151', display: 'block', marginBottom: '0.3rem' }}>
+                            번호 (예: #9, #15-2번)
+                        </label>
+                        <input
+                            type="text"
+                            value={registerNumber}
+                            onChange={(e) => setRegisterNumber(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !registering) handleRegister();
+                                if (e.key === 'Escape') setRegisterModal(null);
+                            }}
+                            disabled={registering}
+                            autoFocus
+                            placeholder={registerModal.suggestedNumber}
+                            style={{
+                                width: '100%',
+                                padding: '0.6rem',
+                                fontSize: '1rem',
+                                border: '1.5px solid #6366f1',
+                                borderRadius: '8px',
+                                marginBottom: '0.5rem',
+                                boxSizing: 'border-box'
+                            }}
+                        />
+                        <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: '0.8rem' }}>
+                            저장될 이름: <b>{registerModal.baseName}{(registerNumber || '').startsWith('#') ? registerNumber : '#' + registerNumber}</b>
+                            <br/>
+                            ※ 등록 시 자동으로 부산사무실(입고)로 배치됩니다. 자사/타사는 등록 후 토글로 변경 가능.
+                        </div>
+
+                        {registerError && (
+                            <div style={{
+                                padding: '0.5rem', background: '#fef2f2', color: '#991b1b',
+                                borderRadius: '6px', fontSize: '0.78rem', marginBottom: '0.8rem'
+                            }}>{registerError}</div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <button
+                                onClick={handleRegister}
+                                disabled={registering}
+                                style={{
+                                    flex: 1, padding: '0.7rem',
+                                    background: registering ? '#9ca3af' : '#10b981',
+                                    color: 'white', border: 'none', borderRadius: '8px',
+                                    fontWeight: '700', cursor: registering ? 'wait' : 'pointer',
+                                    fontSize: '0.92rem'
+                                }}
+                            >
+                                {registering ? '등록 중...' : '✓ 등록'}
+                            </button>
+                            <button
+                                onClick={() => { setRegisterModal(null); setRegisterError(''); }}
+                                disabled={registering}
+                                style={{
+                                    padding: '0.7rem 1rem',
+                                    background: '#f3f4f6', color: '#374151',
+                                    border: '1px solid #d1d5db', borderRadius: '8px',
+                                    cursor: 'pointer', fontSize: '0.9rem'
+                                }}
+                            >
+                                취소
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
