@@ -456,6 +456,80 @@ app.post('/api/products', (req, res) => {
     });
 });
 
+// 2.5.0 서브그룹 일괄 이름 변경
+//   from_base = 'ZENIUS MIS' → to_base = 'ZENIUS PRO'
+//   조건: name LIKE 'from_base#%' (정확히 from_base 로 시작 + # 인 행만)
+//   적용: name 의 'from_base#' prefix → 'to_base#'
+//   --dry_run 으로 영향받을 제품 미리보기
+app.post('/api/products/bulk-rename-base', (req, res) => {
+    const { from_base, to_base, dry_run } = req.body || {};
+
+    if (!from_base || !to_base) {
+        return res.status(400).json({ error: 'from_base 와 to_base 는 필수입니다' });
+    }
+    if (from_base === to_base) {
+        return res.status(400).json({ error: '변경할 이름이 동일합니다' });
+    }
+
+    const pattern = `${from_base}#%`;
+    const fromPrefix = `${from_base}#`;
+    const toPrefix = `${to_base}#`;
+
+    db.all(
+        `SELECT id, name FROM products WHERE name LIKE ? ORDER BY id`,
+        [pattern],
+        (err, rows) => {
+            if (err) {
+                console.error('[bulk-rename-base] preview 실패:', err.message);
+                return res.status(500).json({ error: err.message });
+            }
+
+            const preview = (rows || []).map(r => ({
+                id: r.id,
+                from: r.name,
+                to: r.name.replace(new RegExp('^' + escapeRegExp(fromPrefix)), toPrefix)
+            }));
+
+            if (dry_run) {
+                return res.json({ success: true, dry_run: true, count: preview.length, preview });
+            }
+
+            if (!preview.length) {
+                return res.json({ success: true, count: 0, preview: [] });
+            }
+
+            db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
+                let completed = 0;
+                let failed = false;
+                preview.forEach(p => {
+                    db.run(
+                        `UPDATE products SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+                        [p.to, p.id],
+                        (uErr) => {
+                            if (uErr && !failed) {
+                                failed = true;
+                                console.error('[bulk-rename-base] update 실패:', uErr.message);
+                                db.run('ROLLBACK');
+                                return res.status(500).json({ error: uErr.message });
+                            }
+                            completed++;
+                            if (completed === preview.length && !failed) {
+                                db.run('COMMIT');
+                                res.json({ success: true, count: preview.length, preview });
+                            }
+                        }
+                    );
+                });
+            });
+        }
+    );
+});
+
+function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // 2.5.1. 제품 수정 (UPDATE) - notes, repair_history 포함
 app.put('/api/products/:id', (req, res) => {
     const { id } = req.params;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import EditableProductName from '../../components/EditableProductName';
+import EditableGroupName, { getFamilyOverride } from '../../components/EditableGroupName';
 import axios from 'axios';
 import SalesBottomNav from '../../components/SalesBottomNav';
 import { API_BASE_URL } from '../../config';
@@ -223,6 +224,7 @@ function SalesStatusDashboard() {
 
                     familyGroups.push({
                         familyName: family.label,
+                        familyKeyword: family.keyword || (family.keywords && family.keywords[0]) || family.label,
                         isFamily: true,
                         subGroups: matchingGroups,
                         totalCount: matchingGroups.reduce((sum, g) => sum + g.count, 0)
@@ -564,7 +566,18 @@ function SalesStatusDashboard() {
                                 gap: '0.5rem'
                             }}>
                                 {group.isFamily && <span style={{ fontSize: '0.9rem' }}>📦</span>}
-                                {group.familyName} ({group.totalCount}대)
+                                {manageMode && group.isFamily ? (
+                                    <EditableGroupName
+                                        mode="family"
+                                        currentName={getFamilyOverride(group.familyKeyword || group.familyName) || group.familyName}
+                                        familyKey={group.familyKeyword || group.familyName}
+                                        labelStyle={{ fontWeight: 'bold' }}
+                                        onSaved={() => fetchEquipmentStatus()}
+                                    />
+                                ) : (
+                                    <span>{getFamilyOverride(group.familyKeyword || group.familyName) || group.familyName}</span>
+                                )}
+                                {' '}({group.totalCount}대)
                             </div>
 
                             {/* 서브그룹 렌더링 */}
@@ -582,9 +595,25 @@ function SalesStatusDashboard() {
                                             paddingLeft: '0.25rem',
                                             borderLeft: '3px solid #0891b2',
                                             paddingBottom: '0.15rem',
-                                            marginLeft: '0.25rem'
+                                            marginLeft: '0.25rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.3rem',
+                                            flexWrap: 'wrap'
                                         }}>
-                                            {subGroup.baseName} ({subGroup.count}대)
+                                            {manageMode ? (
+                                                <EditableGroupName
+                                                    mode="subgroup"
+                                                    currentName={subGroup.baseName}
+                                                    labelStyle={{ fontWeight: 'bold' }}
+                                                    onSaved={(newName, count) => {
+                                                        fetchEquipmentStatus();
+                                                    }}
+                                                />
+                                            ) : (
+                                                <span>{subGroup.baseName}</span>
+                                            )}
+                                            {' '}({subGroup.count}대)
                                         </div>
                                     )}
 
