@@ -33,9 +33,11 @@ import SalesInOutRegisterPage from './pages/mobile/SalesInOutRegisterPage';
 import SalesStatusDashboard from './pages/mobile/SalesStatusDashboard';
 import SalesEquipmentQuickPage from './pages/mobile/SalesEquipmentQuickPage';
 import RepairManagementPage from './pages/mobile/RepairManagementPage';
+import SalesInboxPage from './pages/mobile/SalesInboxPage';
 import ChannelQRPage from './pages/ChannelQRPage';
 import GeneralProductRegistrationPage from './pages/GeneralProductRegistrationPage';
 import HospitalProductRegistrationPage from './pages/HospitalProductRegistrationPage';
+import UDIInputPage from './pages/UDIInputPage';
 import MobileBottomNav from './components/MobileBottomNav';
 import ShakeDetectorProvider from './components/ShakeDetectorProvider';
 
@@ -85,6 +87,9 @@ function AppContent() {
           {/* 리포트 라우트 */}
           <Route path="/report" element={<ReportPage />} />
 
+          {/* UDI 입력 (의료기기 공급내역 보고) */}
+          <Route path="/udi" element={<UDIInputPage />} />
+
           {/* 모바일 PWA 라우트 - 팀 선택 */}
           <Route path="/mobile" element={<MobileTeamSelectPage />} />
 
@@ -94,6 +99,7 @@ function AppContent() {
           <Route path="/mobile/sales/status" element={<SalesStatusDashboard />} />
           <Route path="/mobile/sales/quick" element={<SalesEquipmentQuickPage />} />
           <Route path="/mobile/sales/repair" element={<RepairManagementPage />} />
+          <Route path="/mobile/sales/inbox" element={<SalesInboxPage />} />
 
           {/* 모바일 - 관리팀 라우트 (기존 기능) */}
           <Route path="/mobile/management" element={<MobileLendingPage />} />

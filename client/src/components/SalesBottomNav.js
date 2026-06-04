@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import axios from 'axios';
+import { API_BASE_URL } from '../config';
 
 /**
  * SalesBottomNav - 영업팀 전용 하단 네비게이션
@@ -11,6 +13,19 @@ import { useNavigate, useLocation } from 'react-router-dom';
 function SalesBottomNav() {
     const navigate = useNavigate();
     const location = useLocation();
+    const [pendingCount, setPendingCount] = useState(0);
+
+    useEffect(() => {
+        let alive = true;
+        const fetchCount = () => {
+            axios.get(`${API_BASE_URL}/api/inbox/count`, { headers: { 'ngrok-skip-browser-warning': '69420' } })
+                .then(res => { if (alive) setPendingCount(res.data?.pending || 0); })
+                .catch(() => {});
+        };
+        fetchCount();
+        const t = setInterval(fetchCount, 60000);
+        return () => { alive = false; clearInterval(t); };
+    }, [location.pathname]);
 
     // 현재 경로와 쿼리 파라미터 확인
     const currentPath = location.pathname;
@@ -70,6 +85,14 @@ function SalesBottomNav() {
             label: '입출고현황',
             path: '/mobile/sales/status',
             isActive: currentPath === '/mobile/sales/status'
+        },
+        {
+            id: 'inbox',
+            icon: '📋',
+            label: '검토함',
+            path: '/mobile/sales/inbox',
+            badge: pendingCount,
+            isActive: currentPath === '/mobile/sales/inbox'
         }
     ];
 
@@ -121,9 +144,29 @@ function SalesBottomNav() {
                     <span style={{
                         fontSize: '1.25rem',
                         marginBottom: '0.25rem',
-                        filter: item.isActive ? 'none' : 'grayscale(30%)'
+                        filter: item.isActive ? 'none' : 'grayscale(30%)',
+                        position: 'relative'
                     }}>
                         {item.icon}
+                        {item.badge > 0 && (
+                            <span style={{
+                                position: 'absolute',
+                                top: '-4px',
+                                right: '-8px',
+                                background: '#ef4444',
+                                color: 'white',
+                                fontSize: '0.6rem',
+                                fontWeight: 700,
+                                minWidth: '14px',
+                                height: '14px',
+                                lineHeight: '14px',
+                                borderRadius: '7px',
+                                padding: '0 3px',
+                                textAlign: 'center'
+                            }}>
+                                {item.badge > 99 ? '99+' : item.badge}
+                            </span>
+                        )}
                     </span>
                     <span style={{
                         fontSize: '0.65rem',

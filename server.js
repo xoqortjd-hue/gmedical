@@ -126,6 +126,25 @@ db.serialize(() => {
         UNIQUE(period_start, period_end)
     )`);
 
+    // 단톡방 대화 자동분석 → 검토 대기함(제안). 승인 후에만 실제 반영.
+    // 설계: docs/superpowers/specs/2026-06-04-kakao-to-aws-inbox-design.md
+    db.run(`CREATE TABLE IF NOT EXISTS chat_proposals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_room TEXT,
+        message_date TEXT,
+        raw_text TEXT,
+        raw_hash TEXT UNIQUE,
+        event_type TEXT CHECK(event_type IN ('REPAIR','MOVE','NOTE')),
+        extracted_json TEXT,
+        mapped_product_id INTEGER,
+        mapped_hospital_id INTEGER,
+        confidence REAL DEFAULT 0,
+        status TEXT DEFAULT 'PENDING' CHECK(status IN ('PENDING','APPLIED','REJECTED')),
+        applied_ref TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        applied_at DATETIME
+    )`);
+
     // products 테이블에 ownership 컬럼 추가 (기존 테이블 마이그레이션)
     db.run(`ALTER TABLE products ADD COLUMN ownership TEXT DEFAULT 'OWN'`, (err) => {
         // 이미 컬럼이 있으면 에러 무시
@@ -213,6 +232,160 @@ app.get('/api/repairs/summary/completed', (req, res) => {
             res.json(rows);
         }
     );
+});
+
+// ─────────────────────────────────────────────────────────────
+// 단톡방 대화 검토 대기함 (chat_proposals)
+// 분석기(클로드 코드 스케줄)가 후보를 등록하고, 사용자가 웹에서 승인하면 반영.
+// 설계: docs/superpowers/specs/2026-06-04-kakao-to-aws-inbox-design.md
+// ─────────────────────────────────────────────────────────────
+
+// 후보 일괄 등록 (raw_hash 중복은 자동 무시)
+app.post('/api/inbox/proposals', (req, res) => {
+    const { proposals } = req.body;
+    if (!Array.isArray(proposals) || proposals.length === 0) {
+        return res.status(400).json({ error: 'proposals 배열은 필수입니다' });
+    }
+    const crypto = require('crypto');
+    db.serialize(() => {
+        const stmt = db.prepare(`INSERT OR IGNORE INTO chat_proposals
+            (source_room, message_date, raw_text, raw_hash, event_type, extracted_json, mapped_product_id, mapped_hospital_id, confidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        let skipped = 0;
+        proposals.forEach(p => {
+            const type = ['REPAIR', 'MOVE', 'NOTE'].includes(p.event_type) ? p.event_type : null;
+            if (!type) { skipped++; return; }
+            const room = p.source_room || '';
+            const date = p.message_date || '';
+            const raw = p.raw_text || '';
+            const hash = crypto.createHash('sha256').update(`${room}|${date}|${type}|${raw}`).digest('hex');
+            stmt.run([room, date, raw, hash, type,
+                JSON.stringify(p.extracted || {}),
+                p.mapped_product_id || null, p.mapped_hospital_id || null,
+                typeof p.confidence === 'number' ? p.confidence : 0]);
+        });
+        stmt.finalize((err) => {
+            if (err) return res.status(500).json({ error: err.message });
+            db.get(`SELECT COUNT(*) AS pending FROM chat_proposals WHERE status='PENDING'`, [], (e, row) => {
+                res.json({ ok: true, received: proposals.length, skipped, pending: row ? row.pending : null });
+            });
+        });
+    });
+});
+
+// 검토 대기함 목록 (제품·병원명 조인)
+app.get('/api/inbox/proposals', (req, res) => {
+    const status = req.query.status || 'PENDING';
+    db.all(`
+        SELECT cp.*, p.name AS mapped_product_name, h.name AS mapped_hospital_name
+        FROM chat_proposals cp
+        LEFT JOIN products p ON p.id = cp.mapped_product_id
+        LEFT JOIN hospitals h ON h.id = cp.mapped_hospital_id
+        WHERE cp.status = ?
+        ORDER BY cp.message_date DESC, cp.id DESC
+    `, [status], (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// PENDING 개수 (네비 배지용)
+app.get('/api/inbox/count', (req, res) => {
+    db.get(`SELECT COUNT(*) AS pending FROM chat_proposals WHERE status='PENDING'`, [], (err, row) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ pending: row ? row.pending : 0 });
+    });
+});
+
+// 제안 거부
+app.patch('/api/inbox/proposals/:id/reject', (req, res) => {
+    db.run(`UPDATE chat_proposals SET status='REJECTED' WHERE id=? AND status='PENDING'`, [req.params.id], function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (this.changes === 0) return res.status(409).json({ error: '이미 처리되었거나 없는 제안입니다' });
+        res.json({ ok: true });
+    });
+});
+
+// 제안 승인 → event_type별 실제 반영. 프론트가 교정한 권위값을 body로 받음.
+app.patch('/api/inbox/proposals/:id/apply', (req, res) => {
+    const id = req.params.id;
+    db.get(`SELECT * FROM chat_proposals WHERE id=?`, [id], (err, prop) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!prop) return res.status(404).json({ error: '제안을 찾을 수 없습니다' });
+        if (prop.status !== 'PENDING') return res.status(409).json({ error: '이미 처리된 제안입니다' });
+
+        const type = req.body.event_type || prop.event_type;
+        const markApplied = (ref) => {
+            db.run(`UPDATE chat_proposals SET status='APPLIED', applied_ref=?, applied_at=CURRENT_TIMESTAMP,
+                        mapped_product_id=COALESCE(?, mapped_product_id), mapped_hospital_id=COALESCE(?, mapped_hospital_id)
+                    WHERE id=?`,
+                [String(ref), req.body.mapped_product_id || null, req.body.mapped_hospital_id || null, id],
+                function (uerr) {
+                    if (uerr) return res.status(500).json({ error: uerr.message });
+                    res.json({ ok: true, event_type: type, applied_ref: ref });
+                });
+        };
+
+        if (type === 'REPAIR') {
+            const { product_name, repair_company, issue_description, requested_by } = req.body;
+            if (!product_name) return res.status(400).json({ error: '장비명(product_name)은 필수입니다' });
+            db.run(`INSERT INTO repair_records (lending_item_id, product_name, status, repair_company, issue_description, requested_by)
+                    VALUES (?, ?, 'REQUESTED', ?, ?, ?)`,
+                [req.body.lending_item_id || null, product_name, repair_company || '', issue_description || '', requested_by || ''],
+                function (ierr) {
+                    if (ierr) return res.status(500).json({ error: ierr.message });
+                    markApplied(`repair:${this.lastID}`);
+                });
+        } else if (type === 'NOTE') {
+            const { period_start, period_end, note_text } = req.body;
+            if (!period_start || !period_end || !note_text) {
+                return res.status(400).json({ error: 'period_start, period_end, note_text는 필수입니다' });
+            }
+            db.get(`SELECT note FROM report_notes WHERE period_start=? AND period_end=?`, [period_start, period_end], (gerr, row) => {
+                if (gerr) return res.status(500).json({ error: gerr.message });
+                const prev = row ? row.note : '';
+                const merged = prev && prev.trim() ? `${prev}\n${note_text}` : note_text;
+                db.run(`INSERT INTO report_notes (period_start, period_end, note, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(period_start, period_end)
+                        DO UPDATE SET note=excluded.note, updated_at=CURRENT_TIMESTAMP`,
+                    [period_start, period_end, merged],
+                    function (ierr) {
+                        if (ierr) return res.status(500).json({ error: ierr.message });
+                        markApplied(`note:${period_start}~${period_end}`);
+                    });
+            });
+        } else if (type === 'MOVE') {
+            const { lending_item_id, to_hospital_id, moved_by, notes } = req.body;
+            if (!lending_item_id || !to_hospital_id) {
+                return res.status(400).json({ error: '장비(lending_item_id)와 병원(to_hospital_id)을 선택해야 합니다' });
+            }
+            db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
+                db.get('SELECT * FROM lending_items WHERE id=?', [lending_item_id], (gerr, item) => {
+                    if (gerr || !item) { db.run('ROLLBACK'); return res.status(404).json({ error: '랜딩 아이템을 찾을 수 없습니다' }); }
+                    const from_hospital_id = item.hospital_id;
+                    db.run('UPDATE lending_items SET hospital_id=?, deploy_date=CURRENT_TIMESTAMP WHERE id=?', [to_hospital_id, lending_item_id], function (uerr) {
+                        if (uerr) { db.run('ROLLBACK'); return res.status(500).json({ error: uerr.message }); }
+                        db.run(`INSERT INTO lending_movements (lending_item_id, from_hospital_id, to_hospital_id, movement_type, quantity, moved_by, notes)
+                                VALUES (?, ?, ?, 'MOVE', ?, ?, ?)`,
+                            [lending_item_id, from_hospital_id, to_hospital_id, item.quantity, moved_by || '단톡방자동', notes || ''],
+                            function (merr) {
+                                if (merr) { db.run('ROLLBACK'); return res.status(500).json({ error: merr.message }); }
+                                const moveId = this.lastID;
+                                db.run('COMMIT');
+                                db.run(`UPDATE chat_proposals SET status='APPLIED', applied_ref=?, applied_at=CURRENT_TIMESTAMP WHERE id=?`,
+                                    [`move:${moveId}`, id], function () {
+                                        res.json({ ok: true, event_type: 'MOVE', from_hospital_id, to_hospital_id });
+                                    });
+                            });
+                    });
+                });
+            });
+        } else {
+            return res.status(400).json({ error: '알 수 없는 event_type' });
+        }
+    });
 });
 
 // 수리 상세 + 로그 조회
