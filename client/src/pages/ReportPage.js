@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import '../styles/main.css';
@@ -150,10 +150,21 @@ function ReportPage() {
     const [editingNote, setEditingNote] = useState('');
 
     // 영업팀 현황판 그룹별 인쇄 제외
+    // 기본값: 전체 미선택 (= 모든 그룹을 제외 목록에 넣어둠). 데이터 로드 후 최초 1회 채움.
     const [excludedGroups, setExcludedGroups] = useState([]);
+    const groupsDefaultApplied = useRef(false);
     const toggleGroupExclusion = (baseName) => {
         setExcludedGroups(prev => prev.includes(baseName) ? prev.filter(g => g !== baseName) : [...prev, baseName]);
     };
+
+    // 리포트 페이지 진입 시 기구 그룹을 전부 미선택(제외) 상태로 초기화
+    useEffect(() => {
+        if (!groupsDefaultApplied.current && salesStatusData && salesStatusData.groups && salesStatusData.groups.length > 0) {
+            const allBaseNames = salesStatusData.groups.flatMap(g => g.subGroups.map(sg => sg.baseName));
+            setExcludedGroups(allBaseNames);
+            groupsDefaultApplied.current = true;
+        }
+    }, [salesStatusData]);
 
     // 자사/타사 수정 모드
     const [ownershipEditMode, setOwnershipEditMode] = useState(false);
