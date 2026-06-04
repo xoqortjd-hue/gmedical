@@ -194,6 +194,27 @@ app.get('/api/repairs/summary/active', (req, res) => {
     });
 });
 
+// 기간 내 수리 완료(전달완료) 내역 조회 (리포트 특이사항 자동입력용)
+// completed_date 는 UTC(CURRENT_TIMESTAMP) 저장이므로 KST(+9h) 보정하여 날짜 비교
+app.get('/api/repairs/summary/completed', (req, res) => {
+    const { start_date, end_date } = req.query;
+    if (!start_date || !end_date) {
+        return res.status(400).json({ error: 'start_date와 end_date는 필수입니다' });
+    }
+    db.all(
+        `SELECT * FROM repair_records
+         WHERE status = 'COMPLETED'
+           AND completed_date IS NOT NULL
+           AND date(completed_date, '+9 hours') BETWEEN date(?) AND date(?)
+         ORDER BY completed_date ASC`,
+        [start_date, end_date],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json(rows);
+        }
+    );
+});
+
 // 수리 상세 + 로그 조회
 app.get('/api/repairs/:id', (req, res) => {
     db.get('SELECT * FROM repair_records WHERE id = ?', [req.params.id], (err, record) => {

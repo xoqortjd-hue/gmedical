@@ -176,11 +176,33 @@ function ReportPage() {
         fetchReportData();
     }, [period, dateOffset]);
 
-    // 기간 변경 시 해당 기간의 특이사항 서버에서 불러오기
+    // 기간 내 수리완료 내역을 특이사항 자동입력용 텍스트로 변환 (간단형)
+    const buildRepairNote = (repairs) => {
+        if (!repairs || repairs.length === 0) return '';
+        const lines = repairs.map(r =>
+            `• ${r.product_name} 수리완료${r.repair_company ? ` (${r.repair_company})` : ''}`
+        );
+        return `[수리 완료]\n${lines.join('\n')}`;
+    };
+
+    // 기간 변경 시 해당 기간의 특이사항 + 수리완료 내역 동시 조회.
+    // 저장된 메모가 비어있으면 그 주 수리완료 내역을 기본값으로 자동입력.
     useEffect(() => {
         if (transactionData?.start_date && transactionData?.end_date) {
-            axios.get(`/api/lending/report/note?start_date=${transactionData.start_date}&end_date=${transactionData.end_date}`)
-                .then(res => setReportNote(res.data.note || ''))
+            const { start_date, end_date } = transactionData;
+            Promise.all([
+                axios.get(`/api/lending/report/note?start_date=${start_date}&end_date=${end_date}`),
+                axios.get(`/api/repairs/summary/completed?start_date=${start_date}&end_date=${end_date}`)
+                    .catch(() => ({ data: [] }))
+            ])
+                .then(([noteRes, repairRes]) => {
+                    const savedNote = noteRes.data.note || '';
+                    if (savedNote.trim()) {
+                        setReportNote(savedNote);
+                    } else {
+                        setReportNote(buildRepairNote(repairRes.data || []));
+                    }
+                })
                 .catch(err => console.error('특이사항 조회 실패:', err));
         }
     }, [transactionData?.start_date, transactionData?.end_date]);
