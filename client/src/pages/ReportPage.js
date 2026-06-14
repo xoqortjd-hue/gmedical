@@ -303,17 +303,65 @@ function ReportPage() {
         }
     };
 
+    // 로컬(KST) 기준 YYYY-MM-DD
+    const fmtLocal = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+
+    // 단톡방 주간 특이사항 초안 불러오기 (검토 후 저장 = 승인)
+    const [digestLoading, setDigestLoading] = useState(false);
+    const loadWeeklyDigest = async () => {
+        if (!transactionData?.start_date || !transactionData?.end_date) return;
+        setDigestLoading(true);
+        try {
+            const { start_date, end_date } = transactionData;
+            const res = await axios.get(`/api/inbox/proposals/digest?start_date=${start_date}&end_date=${end_date}`);
+            const draft = (res.data?.draft || '').trim();
+            if (!draft) {
+                alert('해당 주(월~일)에 단톡방에서 수집된 수리·입출고·특이사항이 없습니다.');
+                return;
+            }
+            // 기존 메모는 덮어쓰지 않고 초안을 위에 합쳐서 검토하게 함
+            setReportNote(prev => {
+                const base = (prev || '').trim();
+                return base ? `${draft}\n\n${base}` : draft;
+            });
+            alert(`단톡방 ${res.data.count}건을 특이사항 초안으로 불러왔습니다.\n내용을 검토·수정한 뒤 [저장]을 눌러 확정하세요.`);
+        } catch (e) {
+            alert('단톡방 내용 불러오기 실패: ' + (e.response?.data?.error || e.message));
+        } finally {
+            setDigestLoading(false);
+        }
+    };
+
     // 날짜 범위 계산
+    // 주간: 완료된 주(월~일) 기준. offset 0 = 지난주(가장 최근 완료된 월~일), -1 = 그 전주…
+    // 월간: 기존 롤링 30일 유지.
     const getDateRange = () => {
-        const days = period === 'monthly' ? 30 : 7;
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + (dateOffset * days));
-        const startDate = new Date(endDate);
-        startDate.setDate(startDate.getDate() - days);
-        return {
-            start_date: startDate.toISOString().split('T')[0],
-            end_date: endDate.toISOString().split('T')[0]
-        };
+        if (period === 'monthly') {
+            const days = 30;
+            const endDate = new Date();
+            endDate.setDate(endDate.getDate() + (dateOffset * days));
+            const startDate = new Date(endDate);
+            startDate.setDate(startDate.getDate() - days);
+            return {
+                start_date: startDate.toISOString().split('T')[0],
+                end_date: endDate.toISOString().split('T')[0]
+            };
+        }
+        // 주간(월~일): 가장 최근 "완료된" 주를 offset 0 으로 본다.
+        const now = new Date();
+        const dow = now.getDay(); // 0=일 .. 6=토
+        const mondayThisWeek = new Date(now);
+        mondayThisWeek.setDate(now.getDate() + (dow === 0 ? -6 : 1 - dow));
+        const start = new Date(mondayThisWeek);
+        start.setDate(mondayThisWeek.getDate() - 7 + (dateOffset * 7)); // 지난주 월요일
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6); // 일요일
+        return { start_date: fmtLocal(start), end_date: fmtLocal(end) };
     };
 
     const fetchReportData = async () => {
@@ -656,9 +704,18 @@ function ReportPage() {
                             fontFamily: 'inherit', boxSizing: 'border-box'
                         }}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
                         <button onClick={saveReportNote} className="btn btn-primary" style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}>
                             💾 저장
+                        </button>
+                        <button
+                            onClick={loadWeeklyDigest}
+                            disabled={digestLoading || !transactionData}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+                            title="이 주(월~일) 단톡방에서 추출된 수리·입출고·특이사항을 초안으로 불러옵니다. 검토 후 저장하세요."
+                        >
+                            {digestLoading ? '불러오는 중…' : '📥 단톡방 특이사항 불러오기'}
                         </button>
                         {noteSaved && <span style={{ color: '#10b981', fontSize: '0.85rem' }}>저장되었습니다</span>}
                     </div>

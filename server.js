@@ -3,6 +3,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const { buildWeeklyDigest } = require('./routes/weekly-digest');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -295,6 +296,27 @@ app.get('/api/inbox/count', (req, res) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ pending: row ? row.pending : 0 });
     });
+});
+
+// 주간 특이사항 초안 — 해당 기간(월~일) PENDING 제안을 모아 리포트 특이사항 초안 텍스트로 변환.
+// 읽기 전용(상태 변경 없음). 사용자가 초안을 검토·수정 후 /api/lending/report/note 로 저장(승인)한다.
+app.get('/api/inbox/proposals/digest', (req, res) => {
+    const { start_date, end_date } = req.query;
+    if (!start_date || !end_date) {
+        return res.status(400).json({ error: 'start_date와 end_date는 필수입니다' });
+    }
+    db.all(
+        `SELECT * FROM chat_proposals
+         WHERE status = 'PENDING'
+           AND date(substr(message_date, 1, 10)) BETWEEN date(?) AND date(?)
+         ORDER BY message_date ASC, id ASC`,
+        [start_date, end_date],
+        (err, rows) => {
+            if (err) return res.status(500).json({ error: err.message });
+            const draft = buildWeeklyDigest(rows || []);
+            res.json({ start_date, end_date, count: (rows || []).length, draft, proposals: rows || [] });
+        }
+    );
 });
 
 // 제안 거부
