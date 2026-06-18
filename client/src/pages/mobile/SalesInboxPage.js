@@ -12,14 +12,14 @@ axios.defaults.headers.common['ngrok-skip-browser-warning'] = '69420';
 const TYPE_LABEL = { REPAIR: '🔧 수리', MOVE: '📦 입출고', NOTE: '📝 특이사항' };
 const TYPE_COLOR = { REPAIR: '#ef4444', MOVE: '#3b82f6', NOTE: '#8b5cf6' };
 
-function todayStr() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-function weekAgoStr() {
-    const d = new Date();
-    d.setDate(d.getDate() - 6);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fmtDate = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+// 추출(메시지) 날짜가 속한 주(월~일) 범위 — 리포트가 월~일 키로 특이사항을 조회하므로 그에 맞춤
+function weekOf(dateStr) {
+    const base = dateStr && /^\d{4}-\d{2}-\d{2}/.test(dateStr) ? new Date(dateStr.slice(0, 10) + 'T00:00:00') : new Date();
+    const dow = base.getDay(); // 0=일 .. 6=토
+    const mon = new Date(base); mon.setDate(base.getDate() + (dow === 0 ? -6 : 1 - dow));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return { start: fmtDate(mon), end: fmtDate(sun) };
 }
 
 function SalesInboxPage() {
@@ -63,9 +63,9 @@ function SalesInboxPage() {
                     repair_company: ex.repair_company || '',
                     issue_description: ex.issue_description || '',
                     requested_by: ex.requested_by || '',
-                    // NOTE
-                    period_start: ex.period_start || weekAgoStr(),
-                    period_end: ex.period_end || todayStr(),
+                    // NOTE — 기본 기간 = 추출(메시지) 날짜가 속한 주(월~일). 추출값(ex.period_*)이 있으면 우선.
+                    period_start: ex.period_start || weekOf(p.message_date).start,
+                    period_end: ex.period_end || weekOf(p.message_date).end,
                     note_text: ex.note_text || ex.issue_description || '',
                     // MOVE
                     lending_item_id: p.mapped_product_id || '',
