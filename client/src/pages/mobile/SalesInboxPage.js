@@ -29,6 +29,9 @@ function SalesInboxPage() {
     const [edits, setEdits] = useState({});         // { [id]: { ...editable fields } }
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState(null);
+    const [selected, setSelected] = useState({});   // { [id]: true } — 포함(반영)할 항목 체크
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const [bulkMsg, setBulkMsg] = useState('');
 
     useEffect(() => {
         fetchAll();
@@ -46,6 +49,7 @@ function SalesInboxPage() {
             setProposals(props);
             setItems(itemRes.data || []);
             setHospitals(hospRes.data || []);
+            setSelected({});
 
             // 추출결과로 편집필드 프리필
             const initial = {};
@@ -82,44 +86,119 @@ function SalesInboxPage() {
         setEdits(prev => ({ ...prev, [id]: { ...prev[id], [key]: value } }));
     };
 
-    const approve = async (p) => {
+    // 승인 body 생성 — 필수값 누락 시 {skip} 반환(알림 없음, 일괄처리에서 재사용)
+    const buildApplyBody = (p) => {
         const e = edits[p.id] || {};
         const type = e.event_type || p.event_type;
         let body = { event_type: type };
-
         if (type === 'REPAIR') {
-            if (!e.product_name || !e.product_name.trim()) { alert('장비명을 입력하세요.'); return; }
+            if (!e.product_name || !e.product_name.trim()) return { skip: '장비명 미입력' };
             body = { ...body, product_name: e.product_name, repair_company: e.repair_company, issue_description: e.issue_description, requested_by: e.requested_by };
         } else if (type === 'NOTE') {
-            if (!e.note_text || !e.note_text.trim()) { alert('특이사항 내용을 입력하세요.'); return; }
+            if (!e.note_text || !e.note_text.trim()) return { skip: '특이사항 내용 미입력' };
             body = { ...body, period_start: e.period_start, period_end: e.period_end, note_text: e.note_text };
         } else if (type === 'MOVE') {
-            if (!e.lending_item_id || !e.to_hospital_id) { alert('장비와 병원을 모두 선택해야 승인할 수 있습니다.'); return; }
+            if (!e.lending_item_id || !e.to_hospital_id) return { skip: '입출고 장비·병원 미선택' };
             body = { ...body, lending_item_id: Number(e.lending_item_id), to_hospital_id: Number(e.to_hospital_id), moved_by: e.moved_by, notes: e.notes };
         }
+        return { body };
+    };
 
-        setBusyId(p.id);
+    // 1건 승인(반영) — 알림 없이 결과 반환: {status:'applied'|'skipped'|'error', reason}
+    const applyOne = async (p) => {
+        const built = buildApplyBody(p);
+        if (built.skip) return { status: 'skipped', reason: built.skip };
         try {
-            await axios.patch(`/api/inbox/proposals/${p.id}/apply`, body);
-            setProposals(prev => prev.filter(x => x.id !== p.id));
+            await axios.patch(`/api/inbox/proposals/${p.id}/apply`, built.body);
+            return { status: 'applied' };
         } catch (error) {
-            alert('반영 실패: ' + (error.response?.data?.error || error.message));
-        } finally {
-            setBusyId(null);
+            return { status: 'error', reason: error.response?.data?.error || error.message };
         }
     };
 
+    // 1건 거부 — 알림 없이 성공여부 반환
+    const rejectOne = async (p) => {
+        try {
+            await axios.patch(`/api/inbox/proposals/${p.id}/reject`);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    };
+
+    // 개별 승인 버튼
+    const approve = async (p) => {
+        const built = buildApplyBody(p);
+        if (built.skip) {
+            const t = (edits[p.id] || {}).event_type || p.event_type;
+            alert(t === 'MOVE' ? '장비와 병원을 모두 선택해야 승인할 수 있습니다.' : built.skip + ' — 내용을 입력하세요.');
+            return;
+        }
+        setBusyId(p.id);
+        const r = await applyOne(p);
+        setBusyId(null);
+        if (r.status === 'applied') setProposals(prev => prev.filter(x => x.id !== p.id));
+        else if (r.status === 'error') alert('반영 실패: ' + r.reason);
+    };
+
+    // 개별 거부 버튼
     const reject = async (p) => {
         if (!window.confirm('이 제안을 거부할까요?')) return;
         setBusyId(p.id);
-        try {
-            await axios.patch(`/api/inbox/proposals/${p.id}/reject`);
-            setProposals(prev => prev.filter(x => x.id !== p.id));
-        } catch (error) {
-            alert('거부 실패: ' + (error.response?.data?.error || error.message));
-        } finally {
-            setBusyId(null);
+        const ok = await rejectOne(p);
+        setBusyId(null);
+        if (ok) setProposals(prev => prev.filter(x => x.id !== p.id));
+        else alert('거부 실패');
+    };
+
+    const toggleSelect = (id) => setSelected(prev => ({ ...prev, [id]: !prev[id] }));
+    const checkedCount = proposals.filter(p => selected[p.id]).length;
+    const allChecked = proposals.length > 0 && proposals.every(p => selected[p.id]);
+    const toggleSelectAll = () => {
+        if (allChecked) setSelected({});
+        else { const all = {}; proposals.forEach(p => { all[p.id] = true; }); setSelected(all); }
+    };
+
+    // ⭐ 일괄 적용: 체크한 것만 반영(승인), 나머지(미체크)는 자동 거부.
+    //   체크된 입출고(MOVE)가 장비/병원 미선택이면 거부하지 않고 '보류'로 남김(실수 방지).
+    const handleBulkApply = async () => {
+        const checked = proposals.filter(p => selected[p.id]);
+        const unchecked = proposals.filter(p => !selected[p.id]);
+        if (checked.length === 0 && unchecked.length === 0) return;
+        const ok = window.confirm(
+            `✅ 포함(반영): ${checked.length}건\n🗑️ 나머지 거부: ${unchecked.length}건\n\n진행할까요? (거부는 되돌릴 수 없습니다)`
+        );
+        if (!ok) return;
+
+        setBulkBusy(true);
+        let applied = 0, rejected = 0;
+        const skipped = [], errors = [];
+        const doneIds = [];
+        let n = 0; const total = checked.length + unchecked.length;
+
+        for (const p of checked) {
+            setBulkMsg(`반영 중… (${++n}/${total})`);
+            const r = await applyOne(p);
+            if (r.status === 'applied') { applied++; doneIds.push(p.id); }
+            else if (r.status === 'skipped') { skipped.push(`${TYPE_LABEL[p.event_type] || p.event_type} — ${r.reason}`); }
+            else { errors.push(`${TYPE_LABEL[p.event_type] || p.event_type} 반영실패: ${r.reason}`); }
         }
+        for (const p of unchecked) {
+            setBulkMsg(`거부 중… (${++n}/${total})`);
+            const okr = await rejectOne(p);
+            if (okr) { rejected++; doneIds.push(p.id); }
+            else { errors.push(`거부실패 id=${p.id}`); }
+        }
+
+        setProposals(prev => prev.filter(x => !doneIds.includes(x.id)));
+        setSelected({});
+        setBulkBusy(false);
+        setBulkMsg('');
+
+        let summary = `완료 — 반영 ${applied}건 · 거부 ${rejected}건`;
+        if (skipped.length) summary += `\n\n⏸️ 보류 ${skipped.length}건 (체크했으나 미선택 — 그대로 남겨둠):\n- ${skipped.join('\n- ')}`;
+        if (errors.length) summary += `\n\n⚠️ 오류 ${errors.length}건:\n- ${errors.join('\n- ')}`;
+        alert(summary);
     };
 
     const inputStyle = { width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem', marginTop: '0.25rem', boxSizing: 'border-box' };
@@ -174,9 +253,29 @@ function SalesInboxPage() {
 
     return (
         <div style={{ paddingBottom: '70px', background: '#f1f5f9', minHeight: '100vh' }}>
-            <div style={{ background: '#0f172a', color: 'white', padding: '1rem', position: 'sticky', top: 0, zIndex: 10 }}>
-                <h2 style={{ margin: 0, fontSize: '1.1rem' }}>📋 검토 대기함</h2>
-                <p style={{ margin: '0.25rem 0 0', fontSize: '0.78rem', opacity: 0.8 }}>단톡방 대화에서 자동추출된 제안 — 승인해야 반영됩니다</p>
+            {/* 헤더 + 일괄처리 바 (함께 상단 고정) */}
+            <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                <div style={{ background: '#0f172a', color: 'white', padding: '1rem' }}>
+                    <h2 style={{ margin: 0, fontSize: '1.1rem' }}>📋 검토 대기함</h2>
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.78rem', opacity: 0.8 }}>포함할 것만 체크 → [일괄 적용] = 체크는 반영, 나머지는 자동 거부</p>
+                </div>
+                {!loading && proposals.length > 0 && (
+                    <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '0.55rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
+                            <input type="checkbox" checked={allChecked} onChange={toggleSelectAll} style={{ width: 18, height: 18 }} />
+                            전체선택
+                        </label>
+                        <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                            전체 {proposals.length} · <b style={{ color: '#16a34a' }}>{checkedCount}</b> 포함 / <b style={{ color: '#ef4444' }}>{proposals.length - checkedCount}</b> 거부
+                        </span>
+                        <button
+                            disabled={bulkBusy}
+                            onClick={handleBulkApply}
+                            style={{ marginLeft: 'auto', padding: '0.5rem 0.9rem', background: bulkBusy ? '#94a3b8' : '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.88rem' }}>
+                            {bulkBusy ? (bulkMsg || '처리중…') : '일괄 적용'}
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div style={{ padding: '0.75rem' }}>
@@ -190,10 +289,14 @@ function SalesInboxPage() {
                 ) : (
                     proposals.map(p => {
                         const lowConf = (p.confidence || 0) < 0.5;
+                        const isSel = !!selected[p.id];
                         return (
-                            <div key={p.id} style={{ background: 'white', borderRadius: '10px', padding: '0.85rem', marginBottom: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: `4px solid ${TYPE_COLOR[p.event_type] || '#94a3b8'}` }}>
+                            <div key={p.id} style={{ background: 'white', borderRadius: '10px', padding: '0.85rem', marginBottom: '0.75rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderLeft: `4px solid ${TYPE_COLOR[p.event_type] || '#94a3b8'}`, outline: isSel ? '2px solid #0ea5e9' : 'none' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                    <span style={{ fontWeight: 700, color: TYPE_COLOR[p.event_type] }}>{TYPE_LABEL[p.event_type] || p.event_type}</span>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', cursor: 'pointer' }}>
+                                        <input type="checkbox" checked={isSel} onChange={() => toggleSelect(p.id)} style={{ width: 18, height: 18 }} />
+                                        <span style={{ fontWeight: 700, color: TYPE_COLOR[p.event_type] }}>{TYPE_LABEL[p.event_type] || p.event_type}</span>
+                                    </label>
                                     <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{p.message_date} {lowConf && <span title="낮은 신뢰도" style={{ color: '#f59e0b' }}>⚠️</span>}</span>
                                 </div>
 
@@ -205,8 +308,8 @@ function SalesInboxPage() {
                                 {renderFields(p)}
 
                                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
-                                    <button disabled={busyId === p.id} onClick={() => approve(p)} style={{ flex: 1, padding: '0.6rem', background: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.9rem' }}>{busyId === p.id ? '처리중…' : '승인'}</button>
-                                    <button disabled={busyId === p.id} onClick={() => reject(p)} style={{ flex: 1, padding: '0.6rem', background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.9rem' }}>거부</button>
+                                    <button disabled={busyId === p.id || bulkBusy} onClick={() => approve(p)} style={{ flex: 1, padding: '0.6rem', background: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.9rem' }}>{busyId === p.id ? '처리중…' : '승인'}</button>
+                                    <button disabled={busyId === p.id || bulkBusy} onClick={() => reject(p)} style={{ flex: 1, padding: '0.6rem', background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.9rem' }}>거부</button>
                                 </div>
                             </div>
                         );
