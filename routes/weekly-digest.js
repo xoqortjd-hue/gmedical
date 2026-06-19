@@ -34,27 +34,21 @@ function repairBody(p, ex) {
   return name + (issue ? ` - ${issue}` : '') + (company ? ` (${company})` : '');
 }
 
-function moveBody(p, ex) {
-  const name = ex.product_name || '';
-  if (!name) return oneLine(p.raw_text);
-  const note = ex.notes || ex.note_text || '';
-  return name + (note ? ` - ${note}` : '');
-}
-
 function noteBody(p, ex) {
   return ex.note_text || ex.issue_description || p.raw_text || '';
 }
 
-const BUILDERS = { REPAIR: repairBody, MOVE: moveBody, NOTE: noteBody };
+// 검토함 종류는 '수리(REPAIR)'와 '입고·특이사항(NOTE)' 2종만. (입출고 MOVE 시스템 폐기 2026-06-19)
+// MOVE 등 정의에 없는 event_type 은 builder 없음 → 무시된다.
+const BUILDERS = { REPAIR: repairBody, NOTE: noteBody };
 const SECTIONS = [
-  ['REPAIR', '■ 수리 / 입고'],
-  ['MOVE', '■ 장비 입출고'],
-  ['NOTE', '■ 기타 특이사항'],
+  ['REPAIR', '■ 수리'],
+  ['NOTE', '■ 입고 / 특이사항'],
 ];
 
 function buildWeeklyDigest(proposals) {
   if (!Array.isArray(proposals) || proposals.length === 0) return '';
-  const groups = { REPAIR: [], MOVE: [], NOTE: [] };
+  const groups = { REPAIR: [], NOTE: [] };
   for (const p of proposals) {
     const builder = BUILDERS[p.event_type];
     if (!builder) continue; // 알 수 없는 타입 무시

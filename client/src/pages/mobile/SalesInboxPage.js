@@ -9,8 +9,9 @@ axios.defaults.headers.common['ngrok-skip-browser-warning'] = '69420';
 
 // 단톡방 대화 자동분석 → 검토 대기함
 // 설계: docs/superpowers/specs/2026-06-04-kakao-to-aws-inbox-design.md
-const TYPE_LABEL = { REPAIR: '🔧 수리', MOVE: '📦 입출고', NOTE: '📝 특이사항' };
-const TYPE_COLOR = { REPAIR: '#ef4444', MOVE: '#3b82f6', NOTE: '#8b5cf6' };
+// 입출고(MOVE) 시스템은 검토함에서 폐기(2026-06-19) — 수리/입고·특이사항만 다룸
+const TYPE_LABEL = { REPAIR: '🔧 수리', NOTE: '📝 입고/특이사항' };
+const TYPE_COLOR = { REPAIR: '#ef4444', NOTE: '#8b5cf6' };
 
 const fmtDate = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 // 추출(메시지) 날짜가 속한 주(월~일) 범위 — 리포트가 월~일 키로 특이사항을 조회하므로 그에 맞춤
@@ -24,8 +25,6 @@ function weekOf(dateStr) {
 
 function SalesInboxPage() {
     const [proposals, setProposals] = useState([]);
-    const [items, setItems] = useState([]);       // lending_items (MOVE 장비 선택용)
-    const [hospitals, setHospitals] = useState([]); // 병원 선택용
     const [edits, setEdits] = useState({});         // { [id]: { ...editable fields } }
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState(null);
@@ -40,15 +39,10 @@ function SalesInboxPage() {
     const fetchAll = async () => {
         setLoading(true);
         try {
-            const [propRes, itemRes, hospRes] = await Promise.all([
-                axios.get('/api/inbox/proposals?status=PENDING'),
-                axios.get('/api/lending/items').catch(() => ({ data: [] })),
-                axios.get('/api/hospitals').catch(() => ({ data: [] })),
-            ]);
-            const props = propRes.data || [];
+            const propRes = await axios.get('/api/inbox/proposals?status=PENDING');
+            // 입출고(MOVE) 시스템 폐기 — 혹시 남아있는 MOVE 제안은 검토함에서 숨김
+            const props = (propRes.data || []).filter(p => p.event_type !== 'MOVE');
             setProposals(props);
-            setItems(itemRes.data || []);
-            setHospitals(hospRes.data || []);
             setSelected({});
 
             // 추출결과로 편집필드 프리필
@@ -67,11 +61,6 @@ function SalesInboxPage() {
                     period_start: ex.period_start || weekOf(p.message_date).start,
                     period_end: ex.period_end || weekOf(p.message_date).end,
                     note_text: ex.note_text || ex.issue_description || '',
-                    // MOVE
-                    lending_item_id: p.mapped_product_id || '',
-                    to_hospital_id: p.mapped_hospital_id || '',
-                    moved_by: ex.requested_by || '',
-                    notes: ex.notes || '',
                 };
             });
             setEdits(initial);
@@ -97,9 +86,6 @@ function SalesInboxPage() {
         } else if (type === 'NOTE') {
             if (!e.note_text || !e.note_text.trim()) return { skip: '특이사항 내용 미입력' };
             body = { ...body, period_start: e.period_start, period_end: e.period_end, note_text: e.note_text };
-        } else if (type === 'MOVE') {
-            if (!e.lending_item_id || !e.to_hospital_id) return { skip: '입출고 장비·병원 미선택' };
-            body = { ...body, lending_item_id: Number(e.lending_item_id), to_hospital_id: Number(e.to_hospital_id), moved_by: e.moved_by, notes: e.notes };
         }
         return { body };
     };
@@ -130,8 +116,7 @@ function SalesInboxPage() {
     const approve = async (p) => {
         const built = buildApplyBody(p);
         if (built.skip) {
-            const t = (edits[p.id] || {}).event_type || p.event_type;
-            alert(t === 'MOVE' ? '장비와 병원을 모두 선택해야 승인할 수 있습니다.' : built.skip + ' — 내용을 입력하세요.');
+            alert(built.skip + ' — 내용을 입력하세요.');
             return;
         }
         setBusyId(p.id);
@@ -160,7 +145,7 @@ function SalesInboxPage() {
     };
 
     // ⭐ 일괄 적용: 체크한 것만 반영(승인), 나머지(미체크)는 자동 거부.
-    //   체크된 입출고(MOVE)가 장비/병원 미선택이면 거부하지 않고 '보류'로 남김(실수 방지).
+    //   체크했으나 필수값(장비명/특이사항) 미입력이면 거부하지 않고 '보류'로 남김(실수 방지).
     const handleBulkApply = async () => {
         const checked = proposals.filter(p => selected[p.id]);
         const unchecked = proposals.filter(p => !selected[p.id]);
@@ -228,27 +213,7 @@ function SalesInboxPage() {
                 </>
             );
         }
-        // MOVE
-        return (
-            <>
-                <label style={labelStyle}>장비 선택 * (현재 위치)
-                    <select style={inputStyle} value={e.lending_item_id} onChange={ev => setField(p.id, 'lending_item_id', ev.target.value)}>
-                        <option value="">-- 장비 선택 --</option>
-                        {items.map(it => (
-                            <option key={it.id} value={it.id}>{it.product_name} {it.serial_number ? `#${it.serial_number}` : ''} ({it.hospital_name || '미지정'})</option>
-                        ))}
-                    </select>
-                </label>
-                <label style={labelStyle}>이동할 병원 *
-                    <select style={inputStyle} value={e.to_hospital_id} onChange={ev => setField(p.id, 'to_hospital_id', ev.target.value)}>
-                        <option value="">-- 병원 선택 --</option>
-                        {hospitals.map(h => (<option key={h.id} value={h.id}>{h.name}</option>))}
-                    </select>
-                </label>
-                <label style={labelStyle}>담당자<input style={inputStyle} value={e.moved_by} onChange={ev => setField(p.id, 'moved_by', ev.target.value)} /></label>
-                <label style={labelStyle}>메모<input style={inputStyle} value={e.notes} onChange={ev => setField(p.id, 'notes', ev.target.value)} /></label>
-            </>
-        );
+        return null; // 폐기된 MOVE 등 그 외 타입은 입력칸 없음
     };
 
     return (

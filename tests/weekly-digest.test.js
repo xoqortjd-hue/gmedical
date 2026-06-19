@@ -25,7 +25,7 @@ test('mmdd: YYYY-MM-DD / 시간포함 모두 MM/DD', () => {
   assert.equal(mmdd(''), '');
 });
 
-test('REPAIR 제안 → 수리/입고 섹션 + 품목명/사유/업체/날짜 포함', () => {
+test('REPAIR 제안 → 수리 섹션 + 품목명/사유/업체/날짜 포함', () => {
   const d = buildWeeklyDigest([
     row({
       event_type: 'REPAIR',
@@ -37,41 +37,49 @@ test('REPAIR 제안 → 수리/입고 섹션 + 품목명/사유/업체/날짜 �
       }),
     }),
   ]);
-  assert.match(d, /■ 수리 \/ 입고/);
+  assert.match(d, /■ 수리/);
   assert.match(d, /ZENIUS MIS/);
   assert.match(d, /모터 소음/);
   assert.match(d, /메디쎄이/);
   assert.match(d, /06\/09/);
 });
 
-test('MOVE 제안 → 장비 입출고 섹션', () => {
+test('MOVE(입출고) 제안은 폐기 — 다이제스트에서 무시', () => {
   const d = buildWeeklyDigest([
     row({ event_type: 'MOVE', extracted_json: JSON.stringify({ product_name: 'ILIAD SCREW', notes: '관문병원 입고' }) }),
   ]);
-  assert.match(d, /■ 장비 입출고/);
-  assert.match(d, /ILIAD SCREW/);
-  assert.match(d, /관문병원 입고/);
+  assert.equal(d, ''); // MOVE 단독이면 빈 다이제스트
+  assert.doesNotMatch(d, /입출고/);
+  assert.doesNotMatch(d, /ILIAD SCREW/);
 });
 
-test('NOTE 제안 → 기타 특이사항 섹션 (note_text 우선)', () => {
+test('신규입고 NOTE([입고] 태그) → 입고/특이사항 섹션', () => {
+  const d = buildWeeklyDigest([
+    row({ event_type: 'NOTE', extracted_json: JSON.stringify({ note_text: '[입고] 코로스펀치 신규 2개 부산사무실' }) }),
+  ]);
+  assert.match(d, /■ 입고 \/ 특이사항/);
+  assert.match(d, /\[입고\] 코로스펀치 신규 2개 부산사무실/);
+});
+
+test('NOTE 제안 → 입고/특이사항 섹션 (note_text 우선)', () => {
   const d = buildWeeklyDigest([
     row({ event_type: 'NOTE', extracted_json: JSON.stringify({ note_text: '데모장비 분실 보고' }) }),
   ]);
-  assert.match(d, /■ 기타 특이사항/);
+  assert.match(d, /■ 입고 \/ 특이사항/);
   assert.match(d, /데모장비 분실 보고/);
 });
 
-test('섹션 순서는 수리→입출고→기타, 입력 순서 무관', () => {
+test('섹션 순서는 수리→입고/특이사항, 입력 순서 무관 (MOVE는 무시됨)', () => {
   const d = buildWeeklyDigest([
     row({ event_type: 'NOTE', extracted_json: JSON.stringify({ note_text: 'N1' }) }),
     row({ event_type: 'MOVE', extracted_json: JSON.stringify({ product_name: 'M1' }) }),
     row({ event_type: 'REPAIR', extracted_json: JSON.stringify({ product_name: 'R1' }) }),
   ]);
-  const iRepair = d.indexOf('수리 / 입고');
-  const iMove = d.indexOf('장비 입출고');
-  const iNote = d.indexOf('기타 특이사항');
-  assert.ok(iRepair >= 0 && iMove >= 0 && iNote >= 0);
-  assert.ok(iRepair < iMove && iMove < iNote);
+  const iRepair = d.indexOf('수리');
+  const iNote = d.indexOf('입고 / 특이사항');
+  assert.ok(iRepair >= 0 && iNote >= 0);
+  assert.ok(iRepair < iNote);
+  assert.doesNotMatch(d, /M1/); // MOVE 무시
 });
 
 test('extracted_json 파싱 실패 시 raw_text로 폴백', () => {
@@ -94,6 +102,6 @@ test('여러 줄 raw_text 는 한 줄로 정리', () => {
   const d = buildWeeklyDigest([
     row({ event_type: 'NOTE', raw_text: '첫줄\n둘째줄\n\n셋째줄', extracted_json: '{}' }),
   ]);
-  assert.doesNotMatch(d.split('기타 특이사항')[1], /\n.*\n.*\n/);
+  assert.doesNotMatch(d.split('특이사항')[1], /\n.*\n.*\n/);
   assert.match(d, /첫줄 둘째줄 셋째줄/);
 });
