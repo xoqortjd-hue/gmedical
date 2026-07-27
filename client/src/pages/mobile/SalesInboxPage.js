@@ -112,6 +112,16 @@ function SalesInboxPage() {
         }
     };
 
+    // 1건 삭제(대기함에서 완전 제거) — 알림 없이 성공여부 반환
+    const deleteOne = async (p) => {
+        try {
+            await axios.delete(`/api/inbox/proposals/${p.id}`);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    };
+
     // 개별 승인 버튼
     const approve = async (p) => {
         const built = buildApplyBody(p);
@@ -186,6 +196,40 @@ function SalesInboxPage() {
         alert(summary);
     };
 
+    // 🗑️ 선택 삭제: 체크한 항목만 대기함에서 완전 제거(미체크는 그대로 둠). 일괄 적용과 달리 나머지를 건드리지 않음.
+    const handleBulkDelete = async () => {
+        const checked = proposals.filter(p => selected[p.id]);
+        if (checked.length === 0) {
+            alert('삭제할 항목을 먼저 체크하세요.');
+            return;
+        }
+        const ok = window.confirm(
+            `🗑️ 선택한 ${checked.length}건을 삭제할까요?\n\n검토 대기함에서 완전히 제거되며 되돌릴 수 없습니다.\n(미체크 항목은 그대로 남습니다)`
+        );
+        if (!ok) return;
+
+        setBulkBusy(true);
+        let deleted = 0;
+        const errors = [];
+        const doneIds = [];
+        let n = 0;
+        for (const p of checked) {
+            setBulkMsg(`삭제 중… (${++n}/${checked.length})`);
+            const okd = await deleteOne(p);
+            if (okd) { deleted++; doneIds.push(p.id); }
+            else { errors.push(`삭제실패 id=${p.id}`); }
+        }
+
+        setProposals(prev => prev.filter(x => !doneIds.includes(x.id)));
+        setSelected({});
+        setBulkBusy(false);
+        setBulkMsg('');
+
+        let summary = `완료 — 삭제 ${deleted}건`;
+        if (errors.length) summary += `\n\n⚠️ 오류 ${errors.length}건:\n- ${errors.join('\n- ')}`;
+        alert(summary);
+    };
+
     const inputStyle = { width: '100%', padding: '0.5rem', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '0.9rem', marginTop: '0.25rem', boxSizing: 'border-box' };
     const labelStyle = { fontSize: '0.78rem', color: '#64748b', fontWeight: 600 };
 
@@ -222,7 +266,7 @@ function SalesInboxPage() {
             <div style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                 <div style={{ background: '#0f172a', color: 'white', padding: '1rem' }}>
                     <h2 style={{ margin: 0, fontSize: '1.1rem' }}>📋 검토 대기함</h2>
-                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.78rem', opacity: 0.8 }}>포함할 것만 체크 → [일괄 적용] = 체크는 반영, 나머지는 자동 거부</p>
+                    <p style={{ margin: '0.25rem 0 0', fontSize: '0.78rem', opacity: 0.8 }}>포함할 것만 체크 → [일괄 적용] = 체크는 반영·나머지 자동 거부 &nbsp;|&nbsp; [선택 삭제] = 체크한 것만 완전 제거</p>
                 </div>
                 {!loading && proposals.length > 0 && (
                     <div style={{ background: 'white', borderBottom: '1px solid #e2e8f0', padding: '0.55rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.6rem', boxShadow: '0 2px 4px rgba(0,0,0,0.06)' }}>
@@ -233,12 +277,21 @@ function SalesInboxPage() {
                         <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
                             전체 {proposals.length} · <b style={{ color: '#16a34a' }}>{checkedCount}</b> 포함 / <b style={{ color: '#ef4444' }}>{proposals.length - checkedCount}</b> 거부
                         </span>
-                        <button
-                            disabled={bulkBusy}
-                            onClick={handleBulkApply}
-                            style={{ marginLeft: 'auto', padding: '0.5rem 0.9rem', background: bulkBusy ? '#94a3b8' : '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.88rem' }}>
-                            {bulkBusy ? (bulkMsg || '처리중…') : '일괄 적용'}
-                        </button>
+                        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
+                            <button
+                                disabled={bulkBusy || checkedCount === 0}
+                                onClick={handleBulkDelete}
+                                title="체크한 항목만 대기함에서 완전 삭제"
+                                style={{ padding: '0.5rem 0.9rem', background: (bulkBusy || checkedCount === 0) ? '#e2e8f0' : '#ef4444', color: (bulkBusy || checkedCount === 0) ? '#94a3b8' : 'white', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.88rem' }}>
+                                🗑️ 선택 삭제{checkedCount > 0 ? ` (${checkedCount})` : ''}
+                            </button>
+                            <button
+                                disabled={bulkBusy}
+                                onClick={handleBulkApply}
+                                style={{ padding: '0.5rem 0.9rem', background: bulkBusy ? '#94a3b8' : '#0ea5e9', color: 'white', border: 'none', borderRadius: '6px', fontWeight: 700, fontSize: '0.88rem' }}>
+                                {bulkBusy ? (bulkMsg || '처리중…') : '일괄 적용'}
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>

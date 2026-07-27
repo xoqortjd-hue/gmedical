@@ -328,6 +328,16 @@ app.patch('/api/inbox/proposals/:id/reject', (req, res) => {
     });
 });
 
+// 제안 삭제 — 검토 대기함에서 완전 제거(거부와 달리 행 자체를 삭제).
+// APPLIED(이미 반영된) 건은 감사 이력 보존을 위해 삭제 금지. 프론트 '선택 삭제'가 건별 호출.
+app.delete('/api/inbox/proposals/:id', (req, res) => {
+    db.run(`DELETE FROM chat_proposals WHERE id=? AND status!='APPLIED'`, [req.params.id], function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (this.changes === 0) return res.status(409).json({ error: '이미 반영되었거나 없는 제안입니다' });
+        res.json({ ok: true });
+    });
+});
+
 // 제안 승인 → event_type별 실제 반영. 프론트가 교정한 권위값을 body로 받음.
 app.patch('/api/inbox/proposals/:id/apply', (req, res) => {
     const id = req.params.id;
